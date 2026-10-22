@@ -20,6 +20,7 @@ export async function init() {
       id BIGSERIAL PRIMARY KEY, opportunity_id BIGINT REFERENCES opportunities(id),
       kind TEXT NOT NULL, note TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT now()
     );
+    CREATE INDEX IF NOT EXISTS activities_lead_timeline ON activities(opportunity_id,created_at DESC);
     ALTER TABLE opportunities DROP CONSTRAINT IF EXISTS opportunities_source_url_key;
     CREATE UNIQUE INDEX IF NOT EXISTS opportunities_source_name_unique ON opportunities(source_url,name);
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS evidence_quote TEXT;
@@ -71,6 +72,20 @@ export async function init() {
     ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS researched INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS searched INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS verified INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS status TEXT;
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS stage TEXT;
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS scheduled_date DATE;
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS discovered INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS rejected INTEGER NOT NULL DEFAULT 0;
+    UPDATE research_runs SET
+      status = CASE WHEN finished_at IS NULL THEN 'running' WHEN error IS NULL THEN 'completed' ELSE 'failed' END,
+      updated_at = COALESCE(finished_at,started_at,now())
+      WHERE status IS NULL;
+    ALTER TABLE research_runs ALTER COLUMN status SET DEFAULT 'queued';
+    ALTER TABLE research_runs ALTER COLUMN status SET NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS research_runs_scheduled_day_unique ON research_runs(scheduled_date) WHERE scheduled_date IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS research_runs_queue ON research_runs(status,started_at);
     CREATE TABLE IF NOT EXISTS assistant_messages(id BIGSERIAL PRIMARY KEY,role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,proposal JSONB,evaluation JSONB,applied_at TIMESTAMPTZ,code_draft_id BIGINT,created_at TIMESTAMPTZ DEFAULT now());
     ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS evaluation JSONB;
     ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS code_draft_id BIGINT;
