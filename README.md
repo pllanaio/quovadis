@@ -22,6 +22,8 @@ SMTP kann in der Oberfläche konfiguriert und per **Testmail senden** geprüft w
 
 Die Demo-Unternehmen sind fiktiv. Ohne gespeicherte Opportunities zeigt die Oberfläche weiterhin die Demo an. Rechercheergebnisse sollten vor geschäftlicher Nutzung geprüft werden.
 
+Für den Ausbau der Recherche gibt es einen [Katalog öffentlicher Quellen](docs/quellenkatalog.md) und eine [REA-Analyse der öffentlich sichtbaren OpenProspect-Abläufe](docs/openprospect-analyse.md). Der Katalog ist eine Recherchegrundlage; die genannten Portale sind nicht automatisch angebunden. Die aktuelle Website-Recherche liest jeweils die konfigurierte URL und bildet noch kein Dossier aus mehreren Quellen pro Firma.
+
 Für MCP-Server mit Bearer-Authentifizierung kann pro Quelle ein Token im Frontend hinterlegt werden. Es wird wie die anderen Secrets verschlüsselt gespeichert.
 
 Der Worker verschickt über SMTP einmal pro Tag eine Zusammenfassung fälliger Wiedervorlagen, falls SMTP konfiguriert ist und Kontakte fällig sind. Die Frist lässt sich im Frontend festlegen. Eine Testmail kann dort direkt ausgelöst werden.

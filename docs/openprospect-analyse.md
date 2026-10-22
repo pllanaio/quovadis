@@ -6,6 +6,8 @@ Stand: 22. Oktober 2026. Untersucht wurden ausschließlich öffentlich zugängli
 
 [Die Produktseite](https://www.openprospect.io/de/produkt) beschreibt einen Ablauf: Aus einem Idealkundenprofil werden Firmen gesucht, unpassende Firmen aussortiert, Ansprechpartner geprüft, öffentliche Informationen pro Firma gesammelt und daraus ein individueller Gesprächsanlass („Hook“) formuliert. Als Quellen nennt die Seite Firmenwebsites, Register, Stellenanzeigen, Bewertungen, Ausstellerlisten und Presse. Sie behauptet über 20 Quellen pro Firma. Das FAQ sagt ausdrücklich, dass Firmen einzeln geprüft werden und nur passende Firmen mit erreichbarer Ansprechperson vorgeschlagen werden.
 
+[Die Datenschutzerklärung, Abschnitt 11](https://www.openprospect.io/de/datenschutz), nennt ergänzend Websites und Impressum, Handelsregister, Stellenanzeigen, Branchenverzeichnisse, Kartendienste mit Bewertungen sowie öffentliche Profile in beruflichen Netzwerken. Das ist die vollständigste öffentlich gefundene Liste von **Quellenarten**, keine Liste der angeblich über 20 konkreten Dienste oder Datenlieferanten. Für quovadis liegt ein [separater Quellenkatalog](quellenkatalog.md) vor.
+
 **Technischer Befund:** Die öffentlich sichtbare Recherche-Darstellung ist eine Animation mit bereits im HTML enthaltenen Werten. REA fand in `RechercheStapel…js` und `recherche-schritte…js` DOM-Abfragen auf `data-rc-gesamt` und `data-rc-bleiben`. Der betrachtete DOM enthielt dafür die festen Werte `6041` und `527`. Diese Animation ist kein Nachweis für eine aktuell ausgeführte Suche. Ob die dahinter angebotene Dienstleistung tatsächlich jede Firma nach diesem Muster bearbeitet, lässt sich ohne einen echten Recherchelauf oder Backend-Zugang nicht feststellen.
 
 ## Was „Signale“ dort bedeutet
