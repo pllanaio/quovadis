@@ -7,12 +7,34 @@ services:
       POSTGRES_DB: quovadis
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d quovadis"]
+      interval: 5s
+      retries: 10
   app:
     build: .
-    ports: ["3000:3000"]
-    env_file: .env
+    ports: ["127.0.0.1:3000:3000"]
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/quovadis
-    depends_on: [db]
+      SETTINGS_KEY_FILE: /app/data/settings.key
+      WORKER_KEY_FILE: /app/data/worker.key
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+  worker:
+    build: .
+    command: ["node", "scripts/worker.mjs"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/quovadis
+      SETTINGS_KEY_FILE: /app/data/settings.key
+      WORKER_KEY_FILE: /app/data/worker.key
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      - app
+    restart: unless-stopped
 volumes:
   postgres_data:
+  app_data:

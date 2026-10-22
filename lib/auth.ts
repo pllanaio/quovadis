@@ -1,0 +1,19 @@
+import {createHash,randomBytes,scryptSync,timingSafeEqual} from 'node:crypto';
+import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {dirname} from 'node:path';
+import {NextResponse} from 'next/server';
+import {db,init} from './db';
+const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+function secretFile(){const path=process.env.WORKER_KEY_FILE||'/app/data/worker.key';mkdirSync(dirname(path),{recursive:true});try{writeFileSync(path,randomBytes(32).toString('hex'),{flag:'wx',mode:0o600})}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e}return readFileSync(path,'utf8')}
+export function hashPassword(password:string){const salt=randomBytes(16).toString('hex');return `${salt}:${scryptSync(password,salt,64).toString('hex')}`}
+export function checkPassword(password:string,stored:string){const [salt,hash]=stored.split(':');if(!salt||!hash)return false;const a=scryptSync(password,salt,64),b=Buffer.from(hash,'hex');return a.length===b.length&&timingSafeEqual(a,b)}
+export async function isAuthorized(req:Request,allowWorker=false){await init();if(allowWorker){const header=req.headers.get('x-worker-key');const expected=secretFile();if(header&&header.length===expected.length&&timingSafeEqual(Buffer.from(header),Buffer.from(expected)))return true}
+ const cookie=req.headers.get('cookie')?.match(/(?:^|;\s*)quovadis_session=([^;]+)/)?.[1];if(!cookie)return false;const r=await db().query('SELECT 1 FROM sessions WHERE token_hash=$1 AND expires_at>now()',[digest(cookie)]);return !!r.rowCount}
+export async function guard(req:Request,allowWorker=false){if(!await isAuthorized(req,allowWorker))return NextResponse.json({error:'Nicht angemeldet'},{status:401});if(req.method!=='GET'){const origin=req.headers.get('origin');if(origin&&new URL(origin).host!==new URL(req.url).host)return NextResponse.json({error:'Ungültiger Ursprung'},{status:403})}return null}
+export async function status(req:Request){await init();const admin=await db().query('SELECT 1 FROM admin_user WHERE id=1');return {setup:!admin.rowCount,authenticated:await isAuthorized(req)}}
+export async function login(username:string,password:string){await init();const r=await db().query('SELECT username,password_hash FROM admin_user WHERE id=1');if(!r.rowCount||r.rows[0].username!==username||!checkPassword(password,r.rows[0].password_hash))return null;const token=randomBytes(32).toString('hex');await db().query("INSERT INTO sessions(token_hash,expires_at) VALUES($1,now()+interval '30 days')",[digest(token)]);return token}
+export async function setup(username:string,password:string){await init();if(username.length<3||password.length<16)throw Error('Benutzername mindestens 3 und Passwort mindestens 16 Zeichen');const r=await db().query('INSERT INTO admin_user(id,username,password_hash) VALUES(1,$1,$2) ON CONFLICT DO NOTHING RETURNING id',[username,hashPassword(password)]);if(!r.rowCount)throw Error('Einrichtung bereits abgeschlossen');return login(username,password)}
+export async function logout(req:Request){const cookie=req.headers.get('cookie')?.match(/(?:^|;\s*)quovadis_session=([^;]+)/)?.[1];if(cookie)await db().query('DELETE FROM sessions WHERE token_hash=$1',[digest(cookie)])}
+export function authCookie(res:NextResponse,token:string,req:Request){res.cookies.set('quovadis_session',token,{httpOnly:true,sameSite:'strict',secure:new URL(req.url).protocol==='https:',path:'/',maxAge:30*86400});return res}
+
+export async function changePassword(current:string,next:string){if(next.length<16)throw Error('Neues Passwort muss mindestens 16 Zeichen haben');const r=await db().query('SELECT password_hash FROM admin_user WHERE id=1');if(!r.rowCount||!checkPassword(current,r.rows[0].password_hash))throw Error('Aktuelles Passwort ist falsch');await db().query('UPDATE admin_user SET password_hash=$1 WHERE id=1',[hashPassword(next)]);await db().query('DELETE FROM sessions')}

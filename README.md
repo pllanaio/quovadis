@@ -1,21 +1,27 @@
 # quovadis
 
-Mobile-first IT opportunity radar for Munich, Augsburg and Landsberg am Lech. Next.js / React, PostgreSQL, Docker.
+Eigenständig betriebener IT Opportunity Radar für München, Augsburg und Landsberg am Lech. Next.js, PostgreSQL und ein interner Recherche-Worker. Kein n8n erforderlich.
 
-## Features
-- Evidence-linked opportunity dashboard and scoring
-- Click-to-call and click-to-email with explicit activity logging (opening apps does not count as contact)
-- Seven-day follow-up reminders, notification bell and optional mail webhook
-- n8n-compatible authenticated ingestion endpoint; only evidence-backed leads
-- Server-side OpenAI API analysis hook (model configurable, availability must be verified)
-- Fictional demo opportunities are marked DEMO
+## Start
 
-## Setup
-`cp .env.example .env && docker compose up --build -d`
+1. `docker compose up --build -d`
+2. `http://localhost:3000` öffnen und den ersten Administratorzugang im Browser anlegen.
+3. Unter **Einstellungen** den KI-Anbieter, API-Key, Recherche-Skills, Quellen/Plugins, Zeitintervall und bei Bedarf SMTP einrichten.
 
-On Vercel configure `DATABASE_URL`, `AUTH_USERNAME`, `AUTH_PASSWORD`, `INGEST_API_KEY` and a real database. Do not expose a public preview without access protection. Schema is initialized by the API when the database is connected.
+Alle fachlichen Einstellungen erfolgen in der Oberfläche. PostgreSQL wird von Docker Compose bereitgestellt. Der Schlüssel zur Verschlüsselung gespeicherter Zugangsdaten wird automatisch im persistenten Docker-Volume `app_data` erzeugt. Dieses Volume muss bei Backups zusammen mit `postgres_data` gesichert werden. Der Administrator kann sein Passwort in der Oberfläche ändern. Der Port ist standardmäßig nur auf `127.0.0.1` gebunden; für Zugriff aus dem Firmennetz einen HTTPS-Reverse-Proxy mit eigener Zugriffsbeschränkung davor setzen.
 
-`POST /api/opportunities` with `x-api-key: INGEST_API_KEY` accepts `{name,city,signal,summary,sourceUrl,score,email,phone,website}`. n8n should collect source URLs and deduplicate by signal URL. Sources are stored as evidence, not as inferred facts.
+## Recherche und MCP
 
-## Limitations
-No live research or third-party paid datasets are bundled. Configure Firecrawl, LinkedIn and company data connectors separately under their permitted API terms. Outreach requires an appropriate legal basis; publicly visible contact details are not permission for cold marketing. A mailto/tel click does not prove a call/email occurred. Model `gpt-6-sol` is a requested configuration, not verified as an available OpenAI API model.
+Unter **Quellen und Plugins** können Website-URLs oder Streamable-HTTP-MCP-Server mit Tool-Name und JSON-Argumenten eingetragen und einzeln aktiviert werden. **Tools laden** liest die Tool-Liste des MCP-Servers. **Recherche jetzt starten** verarbeitet aktivierte Quellen sofort. Der interne Docker-Worker führt denselben Lauf im konfigurierten Intervall aus und beginnt 60 Sekunden nach dem Start. Quellenfehler werden protokolliert.
+
+MCP-Tools müssen vollständige HTTP(S)-Quellen-URLs im Tool-Ergebnis liefern. Ein Tool ohne belegte URL erzeugt keine Opportunity. Website-Ergebnisse müssen die konfigurierte Seiten-URL als Nachweis nutzen. Eine bereits vorhandene Quellen-URL aktualisiert den bestehenden Eintrag. Die Skill-Auswahl begrenzt die Signalarten, nach denen das KI-Modell sucht.
+
+OpenAI wird über die Chat-Completions-API, Claude über die Messages-API angesprochen. Modellname und Anbieter sind in der Oberfläche wählbar. Die angezeigten Modellnamen können geändert werden, wenn der eigene API-Zugang andere Modelle unterstützt. API-Schlüssel und SMTP-Passwort werden mit AES-256-GCM in PostgreSQL verschlüsselt und nach dem Speichern nicht an den Browser zurückgegeben.
+
+SMTP kann in der Oberfläche konfiguriert und per **Testmail senden** geprüft werden. Der angegebene Empfänger ist der Testempfänger. Kontaktaktionen werden separat dokumentiert; ein Klick auf `mailto:` oder `tel:` gilt nicht als erfolgter Kontakt.
+
+Die Demo-Unternehmen sind fiktiv. Ohne gespeicherte Opportunities zeigt die Oberfläche weiterhin die Demo an. Rechercheergebnisse sollten vor geschäftlicher Nutzung geprüft werden.
+
+Für MCP-Server mit Bearer-Authentifizierung kann pro Quelle ein Token im Frontend hinterlegt werden. Es wird wie die anderen Secrets verschlüsselt gespeichert.
+
+Der Worker verschickt über SMTP einmal pro Tag eine Zusammenfassung fälliger Wiedervorlagen, falls SMTP konfiguriert ist und Kontakte fällig sind. Die Frist lässt sich im Frontend festlegen. Eine Testmail kann dort direkt ausgelöst werden.

@@ -1,0 +1,4 @@
+import {guard} from '@/lib/auth';
+import {NextResponse} from 'next/server';import nodemailer from 'nodemailer';import {getSettings} from '@/lib/settings';
+export const runtime='nodejs';
+export async function POST(req:Request){const denied=await guard(req);if(denied)return denied;try{const {smtp}=await getSettings();if(!smtp.host||!smtp.to||!smtp.from)throw Error('SMTP Host, Absender und Empfänger fehlen');const transport=nodemailer.createTransport({host:smtp.host,port:smtp.port,secure:smtp.secure,auth:smtp.user?{user:smtp.user,pass:smtp.password}:undefined,connectionTimeout:10000});await transport.sendMail({from:smtp.from,to:smtp.to,subject:'quovadis SMTP-Test',text:'Der SMTP-Versand aus quovadis funktioniert.'});return NextResponse.json({ok:true})}catch(e){return NextResponse.json({error:String(e)},{status:400})}}
