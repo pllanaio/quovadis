@@ -13,10 +13,13 @@ export function explicitExternalDemand(quote:string){
   ||/(?:IT[- ]?Dienstleisterwechsel|Wechsel\s+(?:unseres|des)\s+IT[- ]?Dienstleisters|Ausschreibung.{0,70}(?:IT[- ]?Dienstleistungen|IT[- ]?Betreuung|IT[- ]?Support|Managed Services))/i.test(quote);
 }
 
-export function discoveryFailure(stats:{successfulSearches:number;discovered:number;verified:number;evaluatedPages:number;persistedCandidates:number;persistenceFailures:number}){
+export function discoveryFailure(stats:{successfulSearches:number;discovered:number;verified:number;evaluatedPages:number;persistedCandidates:number;persistenceFailures:number;searchFailures?:number;unavailableSearches?:number;deadlineReached?:boolean}){
  if(!stats.successfulSearches)return 'Keine Suchanfrage konnte erfolgreich ausgeführt werden.';
+ if(stats.unavailableSearches)return `Websuche unvollständig: ${stats.successfulSearches} Suchanfragen wurden beantwortet. Alle verfügbaren Suchzugänge waren anschließend nicht erreichbar; weitere Anfragen wurden gestoppt. Bereits gefundene Treffer wurden weiter geprüft.`;
+ if(stats.searchFailures)return `Websuche unvollständig: ${stats.successfulSearches} von ${stats.successfulSearches+stats.searchFailures} Suchanfragen wurden beantwortet. Vorübergehende Fehler haben die Suchabdeckung eingeschränkt.`;
  if(stats.discovered&&!stats.verified)return 'Suchtreffer vorhanden, aber keine Originalquelle konnte gelesen werden.';
  if(stats.verified&&!stats.evaluatedPages)return 'Originalquellen wurden gelesen, aber die KI-Auswertung ist vollständig fehlgeschlagen.';
  if(stats.persistenceFailures&&!stats.persistedCandidates)return 'Verifizierte Signale konnten nicht gespeichert werden.';
+ if(stats.deadlineReached)return 'Recherche unvollständig: Das Zeitbudget wurde erreicht. Bereits verifizierte Firmen wurden gespeichert.';
  return null;
 }

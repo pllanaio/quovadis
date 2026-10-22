@@ -31,7 +31,7 @@ async function scheduleLoop(){
 async function researchLoop(){
  try{
   const result=await request('/api/research/process','POST',undefined,30*60*1000);
-  if(result.processed)console.log(new Date().toISOString(),'Recherche:',result.imported||0,'neue Signale;',result.searched||0,'Suchanfragen;',result.verified||0,'Originalseiten;',result.pending||0,'Vertiefungen offen;',result.errors?.length||0,'Fehler');
+  if(result.processed){const log=result.status==='failed'?console.error:console.log;log(new Date().toISOString(),'Recherche',result.runId||'',result.stage||result.status||'abgeschlossen',':',result.imported||0,'neue Signale;',result.searched||0,'Suchanfragen;',result.verified||0,'Originalseiten;',result.pending||0,'Vertiefungen offen;',result.errors?.length||0,'Hinweise.',result.errors?.[0]||'')}
  }catch(error){console.error('Recherchefehler:',String(error))}
  setTimeout(researchLoop,60000);
 }

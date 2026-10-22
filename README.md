@@ -62,7 +62,7 @@ Der Ablauf ist **eingeplant → läuft → abgeschlossen/fehlgeschlagen**. Die B
 
 ### Mehr Suchabdeckung, überprüfbare Ergebnisse
 
-Der Agent kombiniert systematische Anfragen pro Stadt und aktivierter Signalart mit bis zu acht KI-geplanten Zusatzanfragen. Nach der ersten Auswertung kann eine zweite Runde mit bis zu acht neuen Anfragen unterrepräsentierte Städte, Nachbarorte und Quellenarten ergänzen. Treffer werden zwischen Anfragen gemischt, doppelte URLs entfernt und passende Stellen- oder Ausschreibungsdetailseiten verfolgt.
+Der Agent kombiniert kurze Anfragen pro Stadt und aktivierter Signalart mit bis zu acht KI-geplanten Zusatzanfragen. Jede Anfrage fokussiert einen Ort und ein Bedarfssignal; überlange Orts- und Stichwortketten werden verworfen. Nach der ersten Auswertung kann eine zweite Runde mit bis zu acht neuen Anfragen unterrepräsentierte Städte, Nachbarorte und Quellenarten ergänzen. Treffer werden zwischen Anfragen gemischt, doppelte URLs entfernt und passende Stellen- oder Ausschreibungsdetailseiten verfolgt.
 
 Gesucht werden insbesondere:
 
@@ -80,7 +80,13 @@ Ein Treffer braucht eine benannte Firma, einen Standort im eingestellten Gebiet,
 
 Der mitgelieferte SearXNG-Dienst sucht im öffentlichen Web; QuoVadis lädt gefundene Originalseiten selbst. Ein Firecrawl-Key kann diese Suche und Seitenabrufe ergänzen. Ohne Key oder bei einem Firecrawl-Fehler wird die integrierte Suche beziehungsweise der direkte Seitenabruf verwendet.
 
-Die Suche braucht Internetzugang vom Server und öffentlich erreichbare Suchmaschinen und Seiten. **Einstellungen → KI & Quellen → Websuche ohne KI testen** prüft Suchtreffer und lesbare Originalseiten. Dieser Verbindungstest prüft keine KI-Auswertung. Für den vollständigen Recherchelauf ist der API-Key des gewählten KI-Anbieters erforderlich.
+SearXNG nutzt eine explizite Gruppe aktivierter Websuchmaschinen. Metasuchanfragen laufen nacheinander mit Abstand, um die Anbieter nicht durch parallele Anfragen zu überlasten. **Keine Treffer**, **einzelne ausgefallene Engines** (etwa CAPTCHA) und **vollständiger Ausfall** werden getrennt behandelt. Ein Teilausfall ist kein Beweis, dass alle Suchmaschinen ausgefallen sind. Bei einem vollständigen Ausfall pausiert der Zugriff kurzzeitig; ein manueller Verbindungstest kann sofort erneut prüfen.
+
+**KI-Websuche als Ersatz** ist unter **Einstellungen → KI & Quellen** abschaltbar. Bei ausgefallener integrierter Suche oder eingeschränkter Suche ohne Treffer nutzt QuoVadis den vorhandenen API-Key und das konfigurierte Modell: OpenAI über Responses mit `web_search`, Claude über das serverseitige Websuchwerkzeug. Es wird kein anderer Modellname automatisch gewählt. Das Modell und der API-Zugang müssen Websuche unterstützen; zusätzliche Such- und Tokengebühren des Anbieters können anfallen. Der Ersatz liefert ausschließlich Quellen aus tatsächlichen Suchwerkzeug-Ergebnissen. Modelltext wird nicht als Fundstelle übernommen; die Originalseiten werden danach weiterhin separat gelesen und belegt.
+
+Wenn sämtliche verfügbaren Suchzugänge scheitern, stoppt der Lauf weitere Suchanfragen und eine zweite KI-Planung. Bereits gefundene Originalseiten werden noch ausgewertet, gespeicherte Firmen bleiben erhalten. Ein abgebrochener Lauf erscheint als **Unvollständig** beziehungsweise **Fehlgeschlagen**, mit einer zusammengefassten Diagnose statt wiederholter identischer Fehlerzeilen. Nach Behebung kann **Suche starten** einen neuen Lauf auslösen; ohne manuellen Neustart erfolgt der nächste automatische Versuch zum nächsten täglichen Termin.
+
+Die Suche braucht Internetzugang vom Server und öffentlich erreichbare Suchmaschinen und Seiten. **Einstellungen → KI & Quellen → Websuche ohne KI testen** prüft Suchtreffer und lesbare Originalseiten. Dieser Verbindungstest prüft keine KI-Auswertung. **Konfigurierte Suche testen** prüft die gespeicherte Suchkonfiguration einschließlich Ersatzsuche, sofern diese benötigt wird. Beide Tests nennen verwendeten Suchzugang, betroffene Engines und konkrete Störungen. Geänderte Zugangsdaten und Einstellungen zuerst speichern. Für den vollständigen Recherchelauf ist der API-Key des gewählten KI-Anbieters erforderlich.
 
 ## Firmendossier, Bewertung und Kontakt
 

@@ -8,6 +8,8 @@ const output=process.env.UI_TEST_OUTPUT||'/tmp/quovadis-qa';
 await mkdir(output,{recursive:true});
 const browser=await chromium.launch({headless:true,channel:'chromium'});
 const page=await browser.newPage({viewport:{width:1536,height:1080},reducedMotion:'reduce',locale:'de-DE'});
+// HTTP addresses on a home server do not expose randomUUID. Keep this regression covered.
+await page.addInitScript(()=>Object.defineProperty(globalThis.crypto,'randomUUID',{value:undefined,configurable:true}));
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
 const now=new Date().toISOString();
 const daysAgo=days=>new Date(Date.now()-days*86400000).toISOString();
@@ -64,6 +66,18 @@ try{
  await page.getByText('Alle Einstellungen wurden gespeichert.').waitFor();
  assert.equal(config.dailyAt,'08:30');assert.equal(config.agenticSearch,true);
  await page.screenshot({path:output+'/settings.png',fullPage:true,animations:'disabled'});
+ await page.getByRole('tab',{name:'KI & Quellen',exact:true}).click();
+ await page.getByRole('button',{name:'Quelle hinzufügen',exact:true}).click();
+ await page.getByRole('textbox',{name:'Quellenname',exact:true}).fill('Öffentliche Karriereseite');
+ await page.getByRole('textbox',{name:'URL',exact:true}).fill('https://example.org/karriere');
+ await page.getByRole('button',{name:'Einstellungen speichern'}).click();
+ await page.getByText('Alle Einstellungen wurden gespeichert.').waitFor();
+ assert.equal(config.sources.length,1,'Adding a source works without crypto.randomUUID');
+ assert.equal(config.sources[0].url,'https://example.org/karriere');
+ await page.getByRole('button',{name:'Öffentliche Karriereseite entfernen'}).click();
+ await page.getByRole('button',{name:'Einstellungen speichern'}).click();
+ await page.getByText('Alle Einstellungen wurden gespeichert.').waitFor();
+ assert.equal(config.sources.length,0,'Removing a source persists');
  for(const name of ['KI & Quellen','Verbindungen','Konto'])await page.getByRole('tab',{name,exact:true}).click();
  await page.getByRole('button',{name:'KI-Begleiter',exact:true}).click();
  await page.getByRole('dialog').waitFor();
@@ -91,5 +105,5 @@ try{
  await login.getByText('Benutzername oder Passwort stimmt nicht.').waitFor();
  await login.setViewportSize({width:390,height:844});
  assert.ok(await login.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Mobile login must not overflow');
- console.log('PASS: dashboard, stale lead reactivation, dossier sources/contacts, settings save, assistant, mobile layout, login errors');
+ console.log('PASS: dashboard, stale lead reactivation, dossier sources/contacts, settings save and HTTP-compatible source creation, assistant, mobile layout, login errors');
 }finally{await browser.close()}

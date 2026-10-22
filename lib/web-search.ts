@@ -1,9 +1,24 @@
 import {lookup} from 'node:dns/promises';
 import {load} from 'cheerio';
+import {nativeSearch,NativeSearchError,type NativeSearchSettings} from './native-web-search';
 import {publicWebUrl,reliability,searchWeb as firecrawlSearch,scrapePage as firecrawlScrape,type SearchHit,type VerifiedPage,type PageLink,type PublicContact} from './firecrawl';
 
-const SEARCH_SERVICE='http://searxng:8080/search';
+const SEARCH_SERVICE='http://searxng:8080';
+export type SearchDiagnostic={backend:'searxng'|'firecrawl'|'openai'|'anthropic';status:'ok'|'empty'|'degraded'|'unavailable';message:string;engines?:Array<{name:string;reason:string}>;retryAfterSeconds?:number};
+export type SearchOptions={ai?:NativeSearchSettings;onDiagnostic?:(diagnostic:SearchDiagnostic)=>void;forceRetry?:boolean};
+export type SearchResult={hits:SearchHit[];backend:SearchDiagnostic['backend'];diagnostics:SearchDiagnostic[]};
+export class WebSearchUnavailableError extends Error{
+ readonly code='WEB_SEARCH_UNAVAILABLE';
+ constructor(readonly diagnostics:SearchDiagnostic[]){super('Websuche derzeit nicht verfügbar. '+diagnostics.filter(item=>item.status==='unavailable').map(item=>item.message).join(' '));this.name='WebSearchUnavailableError'}
+}
+class LocalSearchFailure extends Error{constructor(readonly diagnostic:SearchDiagnostic){super(diagnostic.message)}}
 const firecrawlBackoff=new Map<string,number>();
+const nativeBackoff=new Map<string,{until:number;message:string}>();
+let engineCache:{until:number;names:string[]}|undefined;
+let engineLoading:Promise<string[]>|undefined;
+let localBackoff:{until:number;diagnostic:SearchDiagnostic}|undefined;
+let searchQueue:Promise<unknown>=Promise.resolve(),lastLocalRequest=0;
+
 function publicAddress(address:string){
  if(address.includes(':'))return /^[23][0-9a-f]*:/i.test(address);
  const bytes=address.split('.').map(Number),[a,b]=bytes;
@@ -14,22 +29,91 @@ async function safeDestination(url:URL){
  const records=await lookup(url.hostname,{all:true});
  if(!records.length||records.some(record=>!publicAddress(record.address)))throw Error('Nicht öffentliche Zieladresse');
 }
-async function localSearch(query:string,limit:number):Promise<SearchHit[]>{
- const url=new URL(SEARCH_SERVICE);url.searchParams.set('q',query);url.searchParams.set('format','json');url.searchParams.set('language','de-DE');url.searchParams.set('categories','general');
- const response=await fetch(url,{signal:AbortSignal.timeout(25000),headers:{accept:'application/json'}});
- if(!response.ok)throw Error('Lokale Websuche HTTP '+response.status);
- const data=await response.json() as {results?:Array<{url?:string;title?:string;content?:string}>;unresponsive_engines?:unknown[]};
- if(!Array.isArray(data.results))throw Error('Lokale Websuche lieferte kein Ergebnisformat');
- const hits=data.results.flatMap(item=>{const url=publicWebUrl(String(item.url||''));return url?[{url:url.href,title:String(item.title||'').slice(0,200),description:load(String(item.content||'')).text().slice(0,1000)}]:[]});
- if(!hits.length&&data.unresponsive_engines?.length)throw Error('Lokale Suchmaschinen antworten derzeit nicht');
- return hits.slice(0,Math.max(1,Math.min(30,limit)));
+const localFailure=(message:string,engines?:SearchDiagnostic['engines'])=>new LocalSearchFailure({backend:'searxng',status:'unavailable',message,engines});
+function engineIssues(value:unknown):NonNullable<SearchDiagnostic['engines']>{
+ if(!Array.isArray(value))return [];
+ return value.flatMap(item=>Array.isArray(item)&&typeof item[0]==='string'?[{name:item[0].replace(/[^\p{L}\p{N} ._-]/gu,'').slice(0,60),reason:typeof item[1]==='string'?item[1].replace(/https?:\/\/\S+/g,'[URL]').replace(/[\r\n]/g,' ').slice(0,160):'Unbekannter Anbieterfehler'}]:[]).slice(0,20);
 }
-export async function searchWeb(firecrawlKey:string,query:string,limit=8):Promise<SearchHit[]>{
- if(firecrawlKey&&(firecrawlBackoff.get(firecrawlKey)||0)<Date.now()){
-  try{const hits=await firecrawlSearch(firecrawlKey,query,limit);if(hits.length)return hits}catch{firecrawlBackoff.set(firecrawlKey,Date.now()+120000)}
+async function searchEngines(){
+ if(engineCache&&engineCache.until>Date.now())return engineCache.names;
+ if(!engineLoading)engineLoading=(async()=>{
+  let response:Response;
+  try{response=await fetch(SEARCH_SERVICE+'/config',{signal:AbortSignal.timeout(8000),headers:{accept:'application/json'}})}catch{throw localFailure('Der Suchdienst SearXNG ist nicht erreichbar. Containerstatus, DNS und Netzwerkverbindung prüfen.')}
+  if(!response.ok)throw localFailure('SearXNG-Konfiguration ist nicht lesbar (HTTP '+response.status+').');
+  let data:{engines?:Array<{name?:string;enabled?:boolean;categories?:string[]}>};
+  try{data=await response.json()}catch{throw localFailure('SearXNG-Konfiguration liefert kein gültiges JSON.')}
+  if(!Array.isArray(data.engines))throw localFailure('SearXNG liefert keine Enginekonfiguration.');
+  const names=data.engines.filter(engine=>engine.enabled&&engine.categories?.includes('general')&&engine.categories.includes('web')&&typeof engine.name==='string').map(engine=>engine.name!);
+  if(!names.length)throw localFailure('In SearXNG ist keine allgemeine Websuchmaschine aktiviert.');
+  engineCache={until:Date.now()+10*60*1000,names};return names;
+ })().finally(()=>{engineLoading=undefined});
+ return engineLoading;
+}
+async function performLocalSearch(query:string,limit:number):Promise<{hits:SearchHit[];diagnostic:SearchDiagnostic}>{
+ if(localBackoff&&localBackoff.until>Date.now())throw new LocalSearchFailure({...localBackoff.diagnostic,retryAfterSeconds:Math.ceil((localBackoff.until-Date.now())/1000)});
+ try{
+  const engines=await searchEngines();
+  const delay=750-(Date.now()-lastLocalRequest);if(delay>0)await new Promise(resolve=>setTimeout(resolve,delay));lastLocalRequest=Date.now();
+  const url=new URL('/search',SEARCH_SERVICE);url.searchParams.set('q',query);url.searchParams.set('format','json');url.searchParams.set('language','de-DE');url.searchParams.set('categories','general');url.searchParams.set('engines',engines.join(','));
+  let response:Response;
+  try{response=await fetch(url,{signal:AbortSignal.timeout(25000),headers:{accept:'application/json'}})}catch(error){throw localFailure(error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'SearXNG hat innerhalb von 25 Sekunden nicht geantwortet.':'SearXNG ist beim Suchen nicht erreichbar. Containerstatus und Netzwerkverbindung prüfen.')}
+  if(!response.ok)throw localFailure('SearXNG-Websuche meldet HTTP '+response.status+(response.status===403?'. JSON-Suchzugang und SearXNG-Konfiguration prüfen.':'.'));
+  let data:{results?:Array<{url?:string;title?:string;content?:string}>;unresponsive_engines?:unknown};
+  try{data=await response.json()}catch{throw localFailure('SearXNG-Websuche liefert kein gültiges JSON.')}
+  if(!Array.isArray(data.results))throw localFailure('SearXNG-Websuche liefert kein gültiges Ergebnisformat.');
+  const seen=new Set<string>();
+  const hits=data.results.flatMap(item=>{if(!item||typeof item!=='object')return [];const url=publicWebUrl(String(item.url||''));if(!url||seen.has(url.href))return [];seen.add(url.href);return [{url:url.href,title:load(String(item.title||'')).text().slice(0,200),description:load(String(item.content||'')).text().slice(0,1000)}]}).slice(0,limit);
+  const issues=engineIssues(data.unresponsive_engines).filter(issue=>engines.includes(issue.name));
+  if(!hits.length&&engines.every(name=>issues.some(issue=>issue.name===name)))throw localFailure('Alle angefragten SearXNG-Suchmaschinen sind ausgefallen: '+issues.map(issue=>issue.name+' ('+issue.reason+')').join(', ')+'.',issues);
+  const status=issues.length?'degraded':hits.length?'ok':'empty';
+  return {hits,diagnostic:{backend:'searxng',status,message:issues.length?'SearXNG ist teilweise verfügbar: '+issues.map(issue=>issue.name+' ('+issue.reason+')').join(', ')+'. Andere angefragte Suchmaschinen haben keinen Fehler gemeldet.':hits.length?'Integrierte Websuche hat Treffer geliefert.':'Integrierte Websuche hat korrekt geantwortet, aber keine Treffer für diese Anfrage gefunden.',engines:issues}};
+ }catch(error){
+  const failure=error instanceof LocalSearchFailure?error:localFailure('SearXNG konnte die Suche nicht verarbeiten.');
+  localBackoff={until:Date.now()+60000,diagnostic:failure.diagnostic};throw failure;
  }
- return localSearch(query,limit);
 }
+function localSearch(query:string,limit:number,forceRetry=false){
+ // One metasearch at a time: each request already fans out to several engines.
+ const request=searchQueue.then(()=>{if(forceRetry){localBackoff=undefined;engineCache=undefined}return performLocalSearch(query,limit)});searchQueue=request.catch(()=>{});return request;
+}
+export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8,options:SearchOptions={}):Promise<SearchResult>{
+ const diagnostics:SearchDiagnostic[]=[];
+ const report=(diagnostic:SearchDiagnostic)=>{diagnostics.push(diagnostic);options.onDiagnostic?.(diagnostic)};
+ let successfulEmpty:SearchDiagnostic['backend']|undefined;
+ const count=Math.max(1,Math.min(30,Math.trunc(limit)||8));
+ const cleanQuery=query.replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim();
+ if(!cleanQuery)throw Error('Suchanfrage ist leer.');
+ if(options.forceRetry&&firecrawlKey)firecrawlBackoff.delete(firecrawlKey)
+ if(firecrawlKey){
+  if((firecrawlBackoff.get(firecrawlKey)||0)>Date.now())report({backend:'firecrawl',status:'unavailable',message:'Firecrawl pausiert nach einem vorherigen Anbieterfehler für höchstens zwei Minuten.'});
+  else try{
+   const hits=await firecrawlSearch(firecrawlKey,cleanQuery,count);report({backend:'firecrawl',status:hits.length?'ok':'empty',message:hits.length?'Firecrawl hat Suchtreffer geliefert.':'Firecrawl hat keine Treffer für diese Anfrage gefunden.'});if(hits.length)return {hits,backend:'firecrawl',diagnostics};successfulEmpty='firecrawl';
+  }catch{firecrawlBackoff.set(firecrawlKey,Date.now()+120000);report({backend:'firecrawl',status:'unavailable',message:'Firecrawl konnte die Suche nicht ausführen. API-Key, Guthaben und Erreichbarkeit prüfen.'})}
+ }
+ let partial:{hits:SearchHit[];diagnostic:SearchDiagnostic}|undefined;
+ try{
+  partial=await localSearch(cleanQuery,count,options.forceRetry);report(partial.diagnostic);
+  if(partial.hits.length||partial.diagnostic.status==='empty')return {hits:partial.hits,backend:'searxng',diagnostics};
+ }catch(error){report(error instanceof LocalSearchFailure?error.diagnostic:{backend:'searxng',status:'unavailable',message:'Die integrierte Websuche ist nicht erreichbar.'})}
+ const ai=options.ai,key=ai?.provider==='anthropic'?ai.anthropicKey:ai?.openaiKey;
+ if(ai&&ai.nativeWebSearch!==false&&key){
+  const identity=ai.provider+':'+ai.model+':'+key;
+  if(options.forceRetry)nativeBackoff.delete(identity);
+  const prior=nativeBackoff.get(identity);
+  if(prior&&prior.until>Date.now())report({backend:ai.provider,status:'unavailable',message:prior.message,retryAfterSeconds:Math.ceil((prior.until-Date.now())/1000)});
+  else try{
+   const hits=await nativeSearch(ai,cleanQuery,count);report({backend:ai.provider,status:hits.length?'ok':'empty',message:(ai.provider==='openai'?'OpenAI':'Claude')+'-Websuche wurde als Ersatz verwendet'+(hits.length?'.':', hat aber keine Treffer geliefert.')});return {hits,backend:ai.provider,diagnostics};
+  }catch(error){
+   const message=error instanceof Error?error.message:'Native KI-Websuche ist nicht verfügbar.';
+   if(nativeBackoff.size>20)nativeBackoff.clear();nativeBackoff.set(identity,{until:Date.now()+Math.max(120000,error instanceof NativeSearchError?error.retryAfterMs||0:0),message});report({backend:ai.provider,status:'unavailable',message});
+  }
+ }else if(ai&&ai.nativeWebSearch!==false){report({backend:ai.provider,status:'unavailable',message:'Für die KI-Ersatzsuche fehlt der API-Key des ausgewählten Anbieters. Unter Einstellungen → KI & Quellen speichern.'})}
+ // A partial engine failure is not evidence that the remaining engines failed.
+ if(partial)return {hits:partial.hits,backend:'searxng',diagnostics};
+ if(successfulEmpty)return {hits:[],backend:successfulEmpty,diagnostics};
+ throw new WebSearchUnavailableError(diagnostics);
+}
+export async function searchWeb(firecrawlKey:string,query:string,limit=8,options:SearchOptions={}):Promise<SearchHit[]>{return (await searchWebDetailed(firecrawlKey,query,limit,options)).hits}
 async function readLimited(response:Response,limit=600000,strict=false){
  if(strict&&Number(response.headers.get('content-length')||0)>limit){await response.body?.cancel();throw Error('Quelldokument überschreitet das Größenlimit')}
  const reader=response.body?.getReader();if(!reader)return new Uint8Array();

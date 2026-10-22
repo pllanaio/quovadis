@@ -18,6 +18,9 @@ try{
  assert.equal(discoveryFailure(valid),null,'valid zero-candidate run succeeds without filling results');
  assert.equal(discoveryFailure({...valid,discovered:0,verified:0,evaluatedPages:0}),null,'valid zero search hits succeed');
  assert.match(discoveryFailure({...valid,successfulSearches:0}),/Suchanfrage/);
+ assert.match(discoveryFailure({...valid,searchFailures:3}),/4 von 7/,'Partially failed searches must not appear fully completed');
+ assert.match(discoveryFailure({...valid,unavailableSearches:1}),/Suchzugänge/);
+ assert.match(discoveryFailure({...valid,deadlineReached:true}),/Zeitbudget/,'An exhausted budget is an incomplete run');
  assert.match(discoveryFailure({...valid,verified:0,evaluatedPages:0}),/Originalquelle/);
  assert.match(discoveryFailure({...valid,evaluatedPages:0}),/KI-Auswertung/);
  assert.match(discoveryFailure({...valid,persistenceFailures:2}),/gespeichert/);
