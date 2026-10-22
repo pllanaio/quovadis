@@ -67,6 +67,11 @@ try{
  assert.equal(config.dailyAt,'08:30');assert.equal(config.agenticSearch,true);
  await page.screenshot({path:output+'/settings.png',fullPage:true,animations:'disabled'});
  await page.getByRole('tab',{name:'KI & Quellen',exact:true}).click();
+ await page.getByRole('button',{name:/Bevorzugter Suchzugang/}).click();
+ await page.getByRole('option',{name:'Direkte KI-Websuche · OpenAI / Claude',exact:true}).click();
+ await page.getByRole('button',{name:'Einstellungen speichern'}).click();
+ await page.getByText('Alle Einstellungen wurden gespeichert.').waitFor();
+ assert.equal(config.searchBackend,'native');assert.equal(config.nativeWebSearch,true);
  await page.getByRole('button',{name:'Quelle hinzufügen',exact:true}).click();
  await page.getByRole('textbox',{name:'Quellenname',exact:true}).fill('Öffentliche Karriereseite');
  await page.getByRole('textbox',{name:'URL',exact:true}).fill('https://example.org/karriere');

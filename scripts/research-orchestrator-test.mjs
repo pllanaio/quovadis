@@ -87,6 +87,9 @@ assert.equal(mixed.result.status,'failed','One empty success must not hide failu
 assert.equal(mixed.terminal.stage,'Unvollständig');
 assert.match(mixed.result.errors[0],/1 von 25/);
 
+const queryFailure=await scenario(async(index,options)=>{if(index===2){const error=Error('No sources for this query');error.code='WEB_SEARCH_QUERY_FAILED';throw error}options.onDiagnostic(empty);return []});
+assert.equal(queryFailure.requested.length,25,'An isolated query failure must not open the provider circuit');assert.equal(queryFailure.plans,2);assert.match(queryFailure.result.errors[0],/24 von 25/);
+
 const degraded=await scenario(async(index,options)=>{options.onDiagnostic({...unavailable,status:'degraded',message:'Eine Suchmaschine ist nicht verfügbar; andere haben geantwortet.'});return []});
 assert.equal(degraded.result.status,'completed','Partial engine availability is not a total provider outage');
 assert.equal(degraded.requested.length,25);

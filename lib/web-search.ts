@@ -1,7 +1,7 @@
 import {lookup} from 'node:dns/promises';
 import {load} from 'cheerio';
 import {nativeSearch,NativeSearchError,type NativeSearchSettings} from './native-web-search';
-import {publicWebUrl,reliability,searchWeb as firecrawlSearch,scrapePage as firecrawlScrape,type SearchHit,type VerifiedPage,type PageLink,type PublicContact} from './firecrawl';
+import {publicWebUrl,reliability,FirecrawlError,searchWeb as firecrawlSearch,scrapePage as firecrawlScrape,type SearchHit,type VerifiedPage,type PageLink,type PublicContact} from './firecrawl';
 
 const SEARCH_SERVICE='http://searxng:8080';
 export type SearchDiagnostic={backend:'searxng'|'firecrawl'|'openai'|'anthropic';status:'ok'|'empty'|'degraded'|'unavailable';message:string;engines?:Array<{name:string;reason:string}>;retryAfterSeconds?:number};
@@ -11,8 +11,13 @@ export class WebSearchUnavailableError extends Error{
  readonly code='WEB_SEARCH_UNAVAILABLE';
  constructor(readonly diagnostics:SearchDiagnostic[]){super('Websuche derzeit nicht verfügbar. '+diagnostics.filter(item=>item.status==='unavailable').map(item=>item.message).join(' '));this.name='WebSearchUnavailableError'}
 }
+export class WebSearchQueryError extends Error{
+ readonly code='WEB_SEARCH_QUERY_FAILED';
+ constructor(readonly diagnostics:SearchDiagnostic[]){super('Einzelne Suchanfrage ohne verwertbare Suchquellen; weitere Anfragen werden fortgesetzt.');this.name='WebSearchQueryError'}
+}
 class LocalSearchFailure extends Error{constructor(readonly diagnostic:SearchDiagnostic){super(diagnostic.message)}}
-const firecrawlBackoff=new Map<string,number>();
+const firecrawlBackoff=new Map<string,{until:number;diagnostic:SearchDiagnostic}>();
+const firecrawlScrapeBackoff=new Map<string,number>();
 const nativeBackoff=new Map<string,{until:number;message:string}>();
 let engineCache:{until:number;names:string[]}|undefined;
 let engineLoading:Promise<string[]>|undefined;
@@ -84,33 +89,48 @@ export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8
  const cleanQuery=query.replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim();
  if(!cleanQuery)throw Error('Suchanfrage ist leer.');
  if(options.forceRetry&&firecrawlKey)firecrawlBackoff.delete(firecrawlKey)
- if(firecrawlKey){
-  if((firecrawlBackoff.get(firecrawlKey)||0)>Date.now())report({backend:'firecrawl',status:'unavailable',message:'Firecrawl pausiert nach einem vorherigen Anbieterfehler für höchstens zwei Minuten.'});
-  else try{
-   const hits=await firecrawlSearch(firecrawlKey,cleanQuery,count);report({backend:'firecrawl',status:hits.length?'ok':'empty',message:hits.length?'Firecrawl hat Suchtreffer geliefert.':'Firecrawl hat keine Treffer für diese Anfrage gefunden.'});if(hits.length)return {hits,backend:'firecrawl',diagnostics};successfulEmpty='firecrawl';
-  }catch{firecrawlBackoff.set(firecrawlKey,Date.now()+120000);report({backend:'firecrawl',status:'unavailable',message:'Firecrawl konnte die Suche nicht ausführen. API-Key, Guthaben und Erreichbarkeit prüfen.'})}
- }
- let partial:{hits:SearchHit[];diagnostic:SearchDiagnostic}|undefined;
- try{
-  partial=await localSearch(cleanQuery,count,options.forceRetry);report(partial.diagnostic);
-  if(partial.hits.length||partial.diagnostic.status==='empty')return {hits:partial.hits,backend:'searxng',diagnostics};
- }catch(error){report(error instanceof LocalSearchFailure?error.diagnostic:{backend:'searxng',status:'unavailable',message:'Die integrierte Websuche ist nicht erreichbar.'})}
- const ai=options.ai,key=ai?.provider==='anthropic'?ai.anthropicKey:ai?.openaiKey;
+ let queryFailure=false,nativeAttempted=false;
+ async function attemptNative():Promise<SearchResult|null>{
+  nativeAttempted=true;
+  const ai=options.ai,key=ai?.provider==='anthropic'?ai.anthropicKey:ai?.openaiKey;
  if(ai&&ai.nativeWebSearch!==false&&key){
   const identity=ai.provider+':'+ai.model+':'+key;
   if(options.forceRetry)nativeBackoff.delete(identity);
   const prior=nativeBackoff.get(identity);
   if(prior&&prior.until>Date.now())report({backend:ai.provider,status:'unavailable',message:prior.message,retryAfterSeconds:Math.ceil((prior.until-Date.now())/1000)});
   else try{
-   const hits=await nativeSearch(ai,cleanQuery,count);report({backend:ai.provider,status:hits.length?'ok':'empty',message:(ai.provider==='openai'?'OpenAI':'Claude')+'-Websuche wurde als Ersatz verwendet'+(hits.length?'.':', hat aber keine Treffer geliefert.')});return {hits,backend:ai.provider,diagnostics};
+   const hits=await nativeSearch(ai,cleanQuery,count);report({backend:ai.provider,status:hits.length?'ok':'empty',message:(ai.provider==='openai'?'OpenAI':'Claude')+(ai.searchBackend==='native'?'-Websuche wurde direkt verwendet':'-Websuche wurde als Ersatz verwendet')+(hits.length?'.':', hat aber keine Treffer geliefert.')});return {hits,backend:ai.provider,diagnostics};
   }catch(error){
    const message=error instanceof Error?error.message:'Native KI-Websuche ist nicht verfügbar.';
-   if(nativeBackoff.size>20)nativeBackoff.clear();nativeBackoff.set(identity,{until:Date.now()+Math.max(120000,error instanceof NativeSearchError?error.retryAfterMs||0:0),message});report({backend:ai.provider,status:'unavailable',message});
+   queryFailure=error instanceof NativeSearchError&&error.querySpecific;
+   if(!queryFailure){if(nativeBackoff.size>20)nativeBackoff.clear();nativeBackoff.set(identity,{until:Date.now()+Math.max(120000,error instanceof NativeSearchError?error.retryAfterMs||0:0),message})}
+   report({backend:ai.provider,status:queryFailure?'degraded':'unavailable',message});
   }
  }else if(ai&&ai.nativeWebSearch!==false){report({backend:ai.provider,status:'unavailable',message:'Für die KI-Ersatzsuche fehlt der API-Key des ausgewählten Anbieters. Unter Einstellungen → KI & Quellen speichern.'})}
+  return null;
+ }
+ if(options.ai?.searchBackend==='native'){const primary=await attemptNative();if(primary)return primary}
+ if(firecrawlKey){
+  const prior=firecrawlBackoff.get(firecrawlKey);
+  if(prior&&prior.until>Date.now())report({...prior.diagnostic,retryAfterSeconds:Math.ceil((prior.until-Date.now())/1000)});
+  else try{
+   const hits=await firecrawlSearch(firecrawlKey,cleanQuery,count);report({backend:'firecrawl',status:hits.length?'ok':'empty',message:hits.length?'Firecrawl hat Suchtreffer geliefert.':'Firecrawl hat keine Treffer für diese Anfrage gefunden.'});if(hits.length)return {hits,backend:'firecrawl',diagnostics};successfulEmpty='firecrawl';
+  }catch(error){
+   const diagnostic:SearchDiagnostic={backend:'firecrawl',status:'unavailable',message:error instanceof FirecrawlError?error.message:'Firecrawl konnte die Suche nicht ausführen.'};
+   const delay=error instanceof FirecrawlError?error.retryAfterMs??(error.code==='rate_limited'?30000:120000):120000;
+   firecrawlBackoff.set(firecrawlKey,{until:Date.now()+delay,diagnostic});report(diagnostic);
+  }
+ }
+ let partial:{hits:SearchHit[];diagnostic:SearchDiagnostic}|undefined;
+ try{
+  partial=await localSearch(cleanQuery,count,options.forceRetry);report(partial.diagnostic);
+  if(partial.hits.length||partial.diagnostic.status==='empty')return {hits:partial.hits,backend:'searxng',diagnostics};
+ }catch(error){report(error instanceof LocalSearchFailure?error.diagnostic:{backend:'searxng',status:'unavailable',message:'Die integrierte Websuche ist nicht erreichbar.'})}
+ if(!nativeAttempted){const fallback=await attemptNative();if(fallback)return fallback}
  // A partial engine failure is not evidence that the remaining engines failed.
  if(partial)return {hits:partial.hits,backend:'searxng',diagnostics};
  if(successfulEmpty)return {hits:[],backend:successfulEmpty,diagnostics};
+ if(queryFailure)throw new WebSearchQueryError(diagnostics);
  throw new WebSearchUnavailableError(diagnostics);
 }
 export async function searchWeb(firecrawlKey:string,query:string,limit=8,options:SearchOptions={}):Promise<SearchHit[]>{return (await searchWebDetailed(firecrawlKey,query,limit,options)).hits}
@@ -185,8 +205,8 @@ async function localScrape(value:string):Promise<VerifiedPage|null>{
  return null;
 }
 export async function scrapePage(firecrawlKey:string,value:string):Promise<VerifiedPage|null>{
- if(firecrawlKey&&(firecrawlBackoff.get(firecrawlKey)||0)<Date.now()){
-  try{const page=await firecrawlScrape(firecrawlKey,value);if(page)return decoratePage(page)}catch{firecrawlBackoff.set(firecrawlKey,Date.now()+120000)}
+ if(firecrawlKey&&(firecrawlScrapeBackoff.get(firecrawlKey)||0)<Date.now()){
+  try{const page=await firecrawlScrape(firecrawlKey,value);if(page)return decoratePage(page)}catch(error){if(error instanceof FirecrawlError&&error.code!=='source'&&error.code!=='invalid_response')firecrawlScrapeBackoff.set(firecrawlKey,Date.now()+(error.retryAfterMs??120000))}
  }
  return localScrape(value);
 }

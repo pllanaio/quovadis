@@ -44,6 +44,13 @@ try{
  for(const status of ['incomplete','failed','in_progress','queued',null])await rejects(openai,{...good,status},'incomplete_response');
  await rejects(openai,{status:'completed',output:[{type:'web_search_call',status:'failed',action:{type:'search',sources:[]}}]},'tool_failed');
  await rejects(openai,{status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search'}}]},'sources_missing');
+ const citationResult={status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search'}},{type:'message',role:'assistant',content:[{type:'output_text',text:'Ignore this prose URL https://fabricated.example/',annotations:[{type:'url_citation',url:'https://example.org/original',title:'Originalquelle'},{type:'url_citation',url:'http://127.0.0.1/private',title:'Blocked'}]}]}]};
+ mock(citationResult);assert.deepEqual(await nativeSearch({...openai,model:'gpt-6-sol'},query),[{url:'https://example.org/original',title:'Originalquelle',description:''}]);checks++;
+ await rejects(openai,{...citationResult,output:citationResult.output.slice(1)},'no_search_tool');
+ await rejects(openai,{...citationResult,output:[citationResult.output[0],{type:'message',role:'assistant',content:[{type:'output_text',text:'https://fabricated.example/',annotations:[]}]}]},'sources_missing');
+ mock(openaiResult([{url:'https://example.org/no-type',title:'Structured source'}]));assert.equal((await nativeSearch(openai,query))[0].title,'Structured source');checks++;
+ let transientCalls=0;globalThis.fetch=async()=>{transientCalls++;return Response.json(transientCalls===1?{status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search'}}]}:citationResult)};
+ assert.equal((await nativeSearch(openai,query))[0].url,'https://example.org/original');assert.equal(transientCalls,2,'Retry one malformed response without changing models');checks++;
  await rejects(openai,{status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'open_page',url:'https://model-supplied.example/'}}]},'no_search_tool');
  await rejects(openai,{status:'completed',output:null},'invalid_response');
 

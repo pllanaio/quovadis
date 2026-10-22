@@ -13,6 +13,8 @@ globalThis.fetch=async input=>{
  assert.equal(url.searchParams.get('countrycodes'),'de');
  const city=url.searchParams.get('city');
  const places={'München':{lat:'48.137',lon:'11.575'},'Augsburg':{lat:'48.369',lon:'10.897'}};
+ if(city==='Garching')return Response.json([{lat:'48.2513878',lon:'11.6509662',name:'Garching bei München',category:'boundary',addresstype:'town',address:{town:'Garching bei München',country_code:'de'},namedetails:{short_name:'Garching'}}]);
+ if(city==='Neustadt')return Response.json([{lat:'49.58',lon:'10.61',name:'Neustadt',category:'place',type:'town',address:{country_code:'de'}},{lat:'49.35',lon:'8.14',name:'Neustadt',category:'place',type:'town',address:{country_code:'de'}}]);
  const point=places[city];
  return Response.json(point?[{...point,name:city,category:'boundary',addresstype:'city',address:{city,country_code:'de'}}]:[]);
 };
@@ -30,4 +32,6 @@ assert.equal(outside.matches,false);
 assert.equal(calls,2,'Resolved city coordinates should be cached');
 const unknown=await matchRegion('Unbekannter Ort',{cities:['München'],radiusKm:250});
 assert.deepEqual(unknown,{matches:false,distanceKm:null,targetCity:null,status:'unknown'});
+const garching=await matchRegion('Garching',{cities:['München'],radiusKm:40});assert.equal(garching.status,'within_radius');assert.ok(garching.distanceKm>10&&garching.distanceKm<20,'Official short names resolve to verified city coordinates');
+assert.equal((await matchRegion('Neustadt',{cities:['München'],radiusKm:250})).status,'unknown','Ambiguous municipalities are never picked by result order');
 console.log('research-region: aliases, distance, radius and unknown-location checks passed');

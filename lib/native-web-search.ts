@@ -6,6 +6,7 @@ export type NativeSearchSettings={
  openaiKey?:string;
  anthropicKey?:string;
  nativeWebSearch?:boolean;
+ searchBackend?:'auto'|'native';
 };
 
 type SearchErrorCode='disabled'|'missing_api_key'|'invalid_model'|'invalid_query'|'authentication_error'|'permission_denied'|'model_unavailable'|'quota_exceeded'|'rate_limited'|'upstream_error'|'invalid_request'|'timeout'|'network_error'|'invalid_response'|'incomplete_response'|'tool_failed'|'no_search_tool'|'sources_missing';
@@ -34,6 +35,7 @@ const explanations:Record<SearchErrorCode,string>={
 /** Only stable local codes and the HTTP status leave this adapter, never API error bodies. */
 export class NativeSearchError extends Error{
  readonly provider:NativeSearchSettings['provider'];
+ get querySpecific(){return ['sources_missing','no_search_tool','incomplete_response','invalid_response','tool_failed'].includes(this.code)}
  constructor(settings:NativeSearchSettings,readonly code:SearchErrorCode,readonly status?:number,readonly retryAfterMs?:number){
   const provider=settings.provider==='anthropic'?'Claude':'OpenAI';
   const name=/^(?:gpt-|chatgpt-|o\d|claude-)[\w.:-]{1,90}$/.test(settings.model)&&![settings.openaiKey,settings.anthropicKey].some(key=>key&&settings.model.includes(key))?settings.model:'konfiguriertes Modell';
@@ -102,12 +104,24 @@ async function openaiSearch(settings:NativeSearchSettings,query:string,limit:num
  if(calls.some(call=>call?.status!=='completed'))throw new NativeSearchError(settings,'tool_failed');
  const searches=calls.map(call=>object(call?.action)).filter(action=>action?.type==='search');
  if(!searches.length)throw new NativeSearchError(settings,'no_search_tool');
- const hits:SearchHit[]=[];
+ const hits:SearchHit[]=[];let hasSourceList=false;
  for(const action of searches){
-  if(!Array.isArray(action?.sources))throw new NativeSearchError(settings,'sources_missing');
-  for(const entry of action.sources){const source=object(entry);if(source?.type==='url'){const result=hit(source.url);if(result)hits.push(result)}}
+  if(!Array.isArray(action?.sources))continue;
+  hasSourceList=true;
+  for(const entry of action.sources){const source=object(entry);if(source&&(source.type==='url'||source.type===undefined)){const result=hit(source.url,source.title);if(result)hits.push(result)}}
  }
- // Message text, url_citation annotations and model-supplied open_page URLs are not search results.
+ // Responses may omit action.sources even with include. In that case use only
+ // API-provided citation annotations following a completed search, never prose URLs.
+ if(!hasSourceList){
+  for(const item of data.output){
+   const message=object(item);if(message?.type!=='message'||message.role!=='assistant'||!Array.isArray(message.content))continue;
+   for(const entry of message.content){
+    const part=object(entry);if(part?.type!=='output_text'||!Array.isArray(part.annotations))continue;
+    for(const value of part.annotations){const citation=object(value);if(citation?.type==='url_citation'){const result=hit(citation.url,citation.title);if(result)hits.push(result)}}
+   }
+  }
+  if(!hits.length)throw new NativeSearchError(settings,'sources_missing');
+ }
  return unique(hits,limit);
 }
 
@@ -150,5 +164,11 @@ export async function nativeSearch(settings:NativeSearchSettings,query:string,li
  if(!/^[\w.:-]{1,100}$/.test(settings.model))throw new NativeSearchError(settings,'invalid_model');
  if(typeof query!=='string'||!query.trim()||query.length>4000)throw new NativeSearchError(settings,'invalid_query');
  const count=Math.max(1,Math.min(30,Math.trunc(Number(limit)||8)));
- return settings.provider==='anthropic'?anthropicSearch(settings,query.trim(),count):openaiSearch(settings,query.trim(),count);
+ for(let attempt=0;;attempt++){
+  try{return await (settings.provider==='anthropic'?anthropicSearch(settings,query.trim(),count):openaiSearch(settings,query.trim(),count))}
+  catch(error){
+   if(attempt||!(error instanceof NativeSearchError)||!error.querySpecific)throw error;
+   await new Promise(resolve=>setTimeout(resolve,800));
+  }
+ }
 }

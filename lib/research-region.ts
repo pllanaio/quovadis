@@ -9,6 +9,7 @@ type GeocodeResult={
  lat?:string;lon?:string;name?:string;display_name?:string;
  category?:string;class?:string;type?:string;addresstype?:string;
  address?:Record<string,string>;
+ namedetails?:Record<string,string>;
 };
 
 const aliases:Record<string,string>={munich:'muenchen',nuremberg:'nuernberg',cologne:'koeln'};
@@ -40,7 +41,7 @@ function coordinates(item:GeocodeResult,city:string):Coordinates|null{
  const level=item.addresstype||item.type||'';
  if(!['city','town','village','municipality','hamlet','suburb','borough','quarter','city_district','administrative'].includes(level))return null;
  const wanted=normalizeCity(city);
- const names=[item.name,address.city,address.town,address.village,address.municipality,address.hamlet,address.suburb,address.borough,address.quarter,address.city_district];
+ const names=[item.name,address.city,address.town,address.village,address.municipality,address.hamlet,address.suburb,address.borough,address.quarter,address.city_district,...['name','name:de','short_name','official_name','_place_short_name'].flatMap(key=>(item.namedetails?.[key]||'').split(';'))];
  if(!names.some(name=>name&&normalizeCity(name)===wanted))return null;
  return {lat,lon};
 }
@@ -55,12 +56,14 @@ async function geocode(city:string):Promise<Coordinates|null>{
    const url=new URL('https://nominatim.openstreetmap.org/search');
    url.searchParams.set('city',city.replace(/^\d{5}\s+/,''));
    url.searchParams.set('country','Deutschland');url.searchParams.set('countrycodes','de');
-   url.searchParams.set('format','jsonv2');url.searchParams.set('addressdetails','1');url.searchParams.set('limit','3');
+   url.searchParams.set('format','jsonv2');url.searchParams.set('addressdetails','1');url.searchParams.set('namedetails','1');url.searchParams.set('limit','10');
    const response=await fetch(url,{signal:AbortSignal.timeout(10000),headers:{'User-Agent':'QuoVadis/1.0 (https://github.com/pllanaio/quovadis; city-radius-verification)','Accept':'application/json','Accept-Language':'de'}});
    if(!response.ok)return null;
    const data:unknown=await response.json();if(!Array.isArray(data))return null;
-   for(const item of data){if(item&&typeof item==='object'){const point=coordinates(item as GeocodeResult,city);if(point)return point}}
-   return null;
+   const points:Coordinates[]=[];
+   for(const item of data){if(item&&typeof item==='object'){const point=coordinates(item as GeocodeResult,city);if(point&&!points.some(other=>haversineKm(point,other)<1))points.push(point)}}
+   // Never choose the first of several different municipalities with the same name.
+   return points.length===1?points[0]:null;
   }catch{return null}
  });
  requests=result.then(()=>undefined,()=>undefined);
