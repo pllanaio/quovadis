@@ -18,11 +18,26 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/quovadis
       SETTINGS_KEY_FILE: /app/data/settings.key
       WORKER_KEY_FILE: /app/data/worker.key
+      NODE_USE_ENV_PROXY: "1"
+      NO_PROXY: searxng,app,db,localhost,127.0.0.1,::1
+      no_proxy: searxng,app,db,localhost,127.0.0.1,::1
     volumes:
       - app_data:/app/data
     depends_on:
       db:
         condition: service_healthy
+      searxng:
+        condition: service_started
+  searxng:
+    image: searxng/searxng@sha256:5ed0323b5f5f8701264ef65e239a2bd83cb57098f2b971fa30bf79c06eeae271
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'export SEARXNG_SECRET="$$(head -c 32 /dev/urandom | base64)"; exec /usr/local/searxng/entrypoint.sh'
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
   worker:
     build: .
     command: ["node", "scripts/worker.mjs"]
@@ -30,6 +45,9 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/quovadis
       SETTINGS_KEY_FILE: /app/data/settings.key
       WORKER_KEY_FILE: /app/data/worker.key
+      NODE_USE_ENV_PROXY: "1"
+      NO_PROXY: searxng,app,db,localhost,127.0.0.1,::1
+      no_proxy: searxng,app,db,localhost,127.0.0.1,::1
     volumes:
       - app_data:/app/data
     depends_on:

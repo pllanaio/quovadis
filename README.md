@@ -6,17 +6,17 @@ Eigenständig betriebener IT Opportunity Radar für München, Augsburg und Lands
 
 1. `docker compose up --build -d`
 2. `http://localhost:3000` öffnen und den ersten Administratorzugang im Browser anlegen.
-3. Unter **Einstellungen** den KI-Anbieter und API-Key sowie den Firecrawl API-Key speichern. Suchauftrag, Recherche-Skills, optionale MCP-Tools und SMTP werden ebenfalls dort eingerichtet.
+3. Unter **Einstellungen** den KI-Anbieter und API-Key speichern; ein Firecrawl API-Key ist optional. Suchauftrag, Recherche-Skills, optionale MCP-Tools und SMTP werden ebenfalls dort eingerichtet.
 
 Alle fachlichen Einstellungen erfolgen in der Oberfläche. PostgreSQL wird von Docker Compose bereitgestellt. Der Schlüssel zur Verschlüsselung gespeicherter Zugangsdaten wird automatisch im persistenten Docker-Volume `app_data` erzeugt. Dieses Volume muss bei Backups zusammen mit `postgres_data` gesichert werden. Der Administrator kann sein Passwort in der Oberfläche ändern. Der Port ist standardmäßig nur auf `127.0.0.1` gebunden; für Zugriff aus dem Firmennetz einen HTTPS-Reverse-Proxy mit eigener Zugriffsbeschränkung davor setzen.
 
 ## Täglicher Discovery-Agent und MCP
 
-Der Worker startet die agentische Suche rund eine Minute nach dem Start und danach einmal pro Tag. Der Agent plant vier regionale Suchanfragen mit dem editierbaren QUOVADIS-Auftrag, wertet Suchtreffer aus und formuliert bis zu zwei gezielte Anschlussfragen. Firecrawl sucht im öffentlichen Web. QuoVadis lädt die gefundenen Originalseiten erneut über Firecrawl und übernimmt nur Signale mit benannter Firma, Standort, Original-URL und wörtlichem IT-Beleg aus der Seite. Die Anzahl geprüfter Seiten pro Lauf ist in der Oberfläche begrenzt und einstellbar. **Signalerkennung jetzt starten** löst einen zusätzlichen Lauf aus.
+Der Worker startet die agentische Suche rund eine Minute nach dem Start und danach einmal pro Tag. Der Agent plant vier regionale Suchanfragen mit dem editierbaren QUOVADIS-Auftrag, wertet Suchtreffer aus und formuliert bis zu zwei gezielte Anschlussfragen. Der mitgelieferte SearXNG-Dienst sucht im öffentlichen Web. QuoVadis lädt die gefundenen Originalseiten selbst und übernimmt nur Signale mit benannter Firma, Standort, Original-URL und wörtlichem IT-Beleg aus der Seite. Die Anzahl geprüfter Seiten pro Lauf ist in der Oberfläche begrenzt und einstellbar. Ein Firecrawl-Key kann optional hinterlegt werden; bei fehlendem Key oder Firecrawl-Fehler nutzt QuoVadis die lokale Suche und liest Seiten direkt. Die lokale Suche braucht Internetzugang vom Server und hängt von öffentlich erreichbaren Suchmaschinen und Seiten ab. **Signalerkennung jetzt starten** löst einen zusätzlichen Lauf aus.
 
 Gefundene Firmen werden zusammengeführt, einzelne Signale und Änderungen bleiben separat gespeichert. Bekannte Belege werden nach ungefähr 23 Stunden erneut geprüft; der Worker arbeitet jeweils einige fällige Belege alle zwei Minuten ab. Eine nicht abrufbare Seite wird als derzeit nicht auffindbar markiert, nicht als besetzte Stelle. Priorität C bleibt als vermuteter Bedarf gekennzeichnet. Eine IT-Stellenanzeige belegt keine Bereitschaft zur externen Vergabe. Der Score hat die Gewichte 35/25/15/15/10. Stundensatz und Potenzial für einen monatlichen Vertrag sind Schätzungen.
 
-Erst nach dem Signal führt die separate Vertiefungswarteschlange weitere Web- und Firmenrecherche aus. Sie läuft alle zwei Minuten. Der Detailbereich zeigt Originalbelege, Prüfdatum, Signalverlauf, Zusatzquellen, Fakten mit Zitaten, Gesprächsansatz und Bewertung. Die Qualität hängt von den verfügbaren Quellen und API-Zugängen ab; geschützte Portale und lizenzierte Datenbanken werden nicht umgangen.
+Erst nach dem Signal führt die separate Vertiefungswarteschlange weitere Web- und Firmenrecherche aus. Sie läuft alle zwei Minuten. Der Detailbereich zeigt Originalbelege, Prüfdatum, Signalverlauf, Zusatzquellen, Fakten mit Zitaten, Gesprächsansatz und Bewertung. Die Qualität hängt von den verfügbaren öffentlichen Quellen und vom KI-Zugang ab; geschützte Portale und lizenzierte Datenbanken werden nicht umgangen.
 
 Unter **Quellen und Plugins** können zusätzlich feste Quellen einem Zweck zugeordnet werden:
 
@@ -33,7 +33,7 @@ SMTP kann in der Oberfläche konfiguriert und per **Testmail senden** geprüft w
 
 Die Demo-Unternehmen sind fiktiv. Ohne gespeicherte Opportunities zeigt die Oberfläche weiterhin die Demo an. Rechercheergebnisse sollten vor geschäftlicher Nutzung geprüft werden.
 
-Für den Ausbau der Recherche gibt es einen [Katalog öffentlicher Quellen](docs/quellenkatalog.md) und eine [REA-Analyse der öffentlich sichtbaren OpenProspect-Abläufe](docs/openprospect-analyse.md). Der Katalog ist eine Recherchegrundlage; die genannten Portale sind über die Firecrawl-Websuche auffindbar, soweit deren Seiten öffentlich zugänglich und indexierbar sind. Deep Research ergänzt Treffer mit Firmenwebsite, Firecrawl-Websuche und konfigurierten MCP-Quellen.
+Für den Ausbau der Recherche gibt es einen [Katalog öffentlicher Quellen](docs/quellenkatalog.md) und eine [REA-Analyse der öffentlich sichtbaren OpenProspect-Abläufe](docs/openprospect-analyse.md). Der Katalog ist eine Recherchegrundlage; die genannten Portale sind über die Websuche auffindbar, soweit deren Seiten öffentlich zugänglich und indexierbar sind. Deep Research ergänzt Treffer mit Firmenwebsite, Websuche und konfigurierten MCP-Quellen.
 
 Für MCP-Server mit Bearer-Authentifizierung kann pro Quelle ein Token im Frontend hinterlegt werden. Es wird wie die anderen Secrets verschlüsselt gespeichert.
 
@@ -43,7 +43,7 @@ Der Worker verschickt über SMTP einmal pro Tag eine Zusammenfassung fälliger W
 
 Über **KI-Begleiter** kann man direkt im Tool mit dem konfigurierten OpenAI- oder Claude-Modell schreiben. Der Chat kennt den aktuellen Suchprompt, aktivierte Skills und Quellen sowie den ausgewählten Lead. Er kann Suchprompts formulieren, Leads einordnen und E-Mail-Texte entwerfen. Er versendet aus dem Chat keine E-Mails.
 
-Für einen Promptvergleich kann der Begleiter dieselben über Firecrawl geprüften Originalseiten oder eine konfigurierte feste Quelle mit zwei Promptvarianten auswerten. Trefferzahl, durchschnittlicher Modell-Score und Quellennachweise werden angezeigt; das ist eine Orientierung, keine objektive Qualitätsmessung. Vergleiche sollten mit mehreren Quellen und menschlicher Prüfung wiederholt werden.
+Für einen Promptvergleich kann der Begleiter dieselben geprüften Originalseiten oder eine konfigurierte feste Quelle mit zwei Promptvarianten auswerten. Trefferzahl, durchschnittlicher Modell-Score und Quellennachweise werden angezeigt; das ist eine Orientierung, keine objektive Qualitätsmessung. Vergleiche sollten mit mehreren Quellen und menschlicher Prüfung wiederholt werden.
 
 Der Begleiter kann Änderungen an Suchprompt, Recherche-Skills, Quellen, Zeitplan, Lead-Notizen und Lead-Bewertungen sowie einen Recherchelauf vorschlagen. Jede Änderung wird erst durch **Änderung übernehmen** ausgeführt. API-Schlüssel und SMTP-Passwörter bleiben außerhalb des Chatkontexts. Der Chatverlauf und Promptvergleiche werden in PostgreSQL gespeichert.
 
