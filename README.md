@@ -33,3 +33,9 @@ Der Worker verschickt über SMTP einmal pro Tag eine Zusammenfassung fälliger W
 Für einen Promptvergleich braucht der Begleiter eine konfigurierte Quelle. Er liest dieselbe Quelle einmal und testet zwei Promptvarianten mit dem gewählten Modell. Trefferzahl, durchschnittlicher Modell-Score und Quellennachweise werden angezeigt; das ist eine Orientierung, keine objektive Qualitätsmessung. Vergleiche sollten mit mehreren Quellen und menschlicher Prüfung wiederholt werden.
 
 Der Begleiter kann Änderungen an Suchprompt, Recherche-Skills, Quellen, Zeitplan, Lead-Notizen und Lead-Bewertungen sowie einen Recherchelauf vorschlagen. Jede Änderung wird erst durch **Änderung übernehmen** ausgeführt. API-Schlüssel und SMTP-Passwörter bleiben außerhalb des Chatkontexts. Der Chatverlauf und Promptvergleiche werden in PostgreSQL gespeichert.
+
+### Quellcode und GitHub-PRs
+
+Unter **Einstellungen → GitHub** werden Organisation/Owner, Repository, Basis-Branch und ein GitHub-Token hinterlegt. Ein Fine-grained Personal Access Token benötigt für das Ziel-Repository **Contents: Read and write** und **Pull requests: Read and write**. Der Token wird verschlüsselt gespeichert und nicht an den Chat gesendet.
+
+Wenn eine Quellcodeänderung gewünscht ist, schlägt der Begleiter eine konkrete Aufgabe vor. **Entwurf vorbereiten** liest geeignete Textdateien aus dem konfigurierten Repository und erzeugt einen begrenzten Code-Diff. **Diff prüfen** zeigt den vollständigen Entwurf. Erst **Draft-PR erstellen** legt einen Branch und einen GitHub Pull Request an. Der Basis-Branch darf sich zwischen Entwurf und PR nicht verändert haben; andernfalls muss ein neuer Entwurf erzeugt werden. Der PR wird nicht automatisch gemergt. Der Entwurf kann bis zu vier kleine Textdateien ändern und fügt keine neuen Paket-Abhängigkeiten hinzu. Größere Aufgaben sollten in mehrere Entwürfe aufgeteilt werden.
