@@ -46,6 +46,12 @@ docker compose ps
 docker compose logs --tail=100 app worker
 ```
 
+## Oberfläche und Darstellung
+
+Die Oberfläche verwendet das offizielle **Coinbase-Preset von HeroUI** mit lokal ausgelieferter Inter-Schrift. Der Darkmode hat einen **schwarzen Seitenhintergrund (`#000000`)**; abgestufte Oberflächen halten Karten, Felder und Dialoge erkennbar. Über das Sonnen-/Mondsymbol lässt sich jederzeit umschalten. Unter **Einstellungen → Konto → Darstellung** stehen **Hell**, **Schwarz** und **System** zur Wahl. Die Auswahl gilt für diesen Browser und bleibt nach dem Neuladen erhalten; standardmäßig folgt sie dem Betriebssystem.
+
+Auf Smartphones gibt es eine untere Schnellnavigation, Firmenkarten und bildschirmfüllende Dossiers mit vier direkt erreichbaren Bereichen. Die zusätzliche Auswertung lässt sich auf dem Dashboard aufklappen. Tablets zeigen ein Raster, große Desktopfenster eine Firmentabelle. Das Navigationsmenü, Dossiers und der KI-Begleiter lassen sich auch mit der Tastatur bedienen und mit Escape schließen.
+
 ## Tägliche agentische Recherche
 
 **Standard:** täglich um **07:00 Uhr, Europe/Berlin**, München, Augsburg und Landsberg am Lech mit jeweils **40 km Umkreis**. Zeitplan, Zeitzone, eine bis drei Städte und Umkreis von 0 bis 250 km sind im Frontend änderbar. Der Umkreis bezieht sich auf die Luftlinie zwischen Ortszentren; die Standortprüfung berücksichtigt derzeit Orte in Deutschland. Sommer- und Winterzeit folgen der gewählten Zeitzone.

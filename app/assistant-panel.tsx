@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useId, useRef, useState} from 'react';
 import {Alert, Button, Card, Chip, Form, Label, Link, Modal, Spinner, TextArea, TextField} from '@heroui/react';
 import {ArrowUp, Check, Code2, ExternalLink, MessageSquare, Plus, Sparkles, WandSparkles, X} from 'lucide-react';
 import CodeReviewPanel from './code-review-panel';
@@ -43,7 +43,8 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');
   const [hasError, setHasError] = useState(false);
-  const bottom = useRef<HTMLDivElement>(null);
+  const conversation = useRef<HTMLDivElement>(null);
+  const headingId = useId();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -54,7 +55,10 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
     }).catch(error => {if (!controller.signal.aborted) {setStatus(messageError(error));setHasError(true);}}).finally(() => {if (!controller.signal.aborted) setLoading(false);});
     return () => controller.abort();
   }, []);
-  useEffect(() => {bottom.current?.scrollIntoView({behavior:'smooth', block:'end'});}, [items, busy]);
+  useEffect(() => {
+    const panel = conversation.current;
+    if (panel) panel.scrollTo({top:panel.scrollHeight, behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  }, [items, busy, status]);
 
   async function send(text = draft) {
     const message = text.trim();
@@ -83,59 +87,59 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
   }
 
   return <>
-    <Modal isOpen onOpenChange={open => {if (!open) onClose();}}>
-      <Modal.Backdrop className="justify-end">
-        <Modal.Container size="full" placement="top" scroll="inside" className="ml-auto w-full flex-none p-0 sm:w-[490px] sm:p-0">
-          <Modal.Dialog aria-label="KI-Begleiter" className="h-full rounded-none p-0 shadow-2xl">
-            <Modal.Header className="flex-row items-center justify-between border-b border-slate-100 px-6 py-5">
-              <div className="flex min-w-0 items-center gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Sparkles size={20}/></div><div className="min-w-0"><Modal.Heading className="font-semibold">Dein KI-Begleiter</Modal.Heading><p className="mt-0.5 truncate text-xs text-slate-500">{lead ? lead.name : 'Recherche, Prompts und nächste Schritte'}</p></div></div>
-              <Button isIconOnly variant="ghost" size="sm" aria-label="KI-Begleiter schließen" onPress={onClose}><X size={18}/></Button>
+    <Modal isOpen onOpenChange={open => {if (!open && !reviewId) onClose();}}>
+      <Modal.Backdrop className="justify-end" isDismissable={!reviewId} isKeyboardDismissDisabled={!!reviewId}>
+        <Modal.Container size="full" placement="top" scroll="inside" className="ml-auto w-full min-w-0 max-w-full flex-none p-0 sm:w-[min(34rem,100vw)] sm:p-0">
+          <Modal.Dialog aria-labelledby={headingId} className="flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-none border-l border-border bg-background p-0 text-foreground shadow-xl">
+            <Modal.Header className="m-0 min-w-0 shrink-0 flex-row items-center justify-between gap-2 border-b border-border bg-surface px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6">
+              <div className="flex min-w-0 items-center gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent"><Sparkles size={20} aria-hidden="true"/></div><div className="min-w-0"><Modal.Heading id={headingId} className="font-semibold">Dein KI-Begleiter</Modal.Heading><p className="mt-0.5 truncate text-xs text-muted">{lead ? lead.name : 'Recherche, Prompts und nächste Schritte'}</p></div></div>
+              <Button isIconOnly variant="ghost" className="size-11 min-h-11 min-w-11 shrink-0" aria-label="KI-Begleiter schließen" onPress={onClose}><X size={20} aria-hidden="true"/></Button>
             </Modal.Header>
-            <Modal.Body className="m-0 overflow-y-auto bg-slate-50/70 p-6">
-              {loading && <div className="flex items-center justify-center gap-3 py-12 text-sm text-slate-500"><Spinner size="sm"/> Chat wird geladen</div>}
-              {!loading && !items.length && <div className="py-6">
-                <div className="mb-6 inline-flex size-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-blue-600"><MessageSquare size={23}/></div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">Woran arbeiten wir?</h3>
-                <p className="mt-3 text-sm leading-relaxed text-slate-500">Entwickle Suchprompts, ordne Leads ein oder bereite den nächsten Kontakt vor. Konkrete Änderungen kannst du direkt übernehmen.</p>
+            <Modal.Body ref={conversation} className="m-0 min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-background px-4 py-5 sm:px-6">
+              {loading && <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted" role="status"><Spinner size="sm"/> Chat wird geladen</div>}
+              {!loading && !items.length && <div className="min-w-0 py-3 sm:py-6">
+                <div className="mb-6 inline-flex size-12 items-center justify-center rounded-2xl border border-border bg-surface text-accent"><MessageSquare size={23} aria-hidden="true"/></div>
+                <h3 className="text-xl font-semibold tracking-tight text-foreground">Woran arbeiten wir?</h3>
+                <p className="mt-3 text-sm leading-relaxed text-muted">Entwickle Suchprompts, ordne Leads ein oder bereite den nächsten Kontakt vor. Konkrete Änderungen kannst du direkt übernehmen.</p>
                 <div className="mt-7 flex flex-col gap-3">
-                  <Button variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-4 text-left" onPress={() => send('Analysiere meinen aktuellen Suchprompt und schlage eine präzisere Version für belegte IT-Bedarfssignale vor.')}><WandSparkles size={17} className="shrink-0 text-blue-600"/> Suchprompt verbessern</Button>
-                  <Button variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-4 text-left" onPress={() => send('Erkläre mir, wie wir zwei Suchprompts an denselben Originalquellen vergleichen können.')}><Plus size={17} className="shrink-0 text-blue-600"/> Zwei Prompts vergleichen</Button>
-                  {lead && <Button variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-4 text-left" onPress={() => send('Formuliere einen sachlichen Gesprächseinstieg für diesen Lead, ausschließlich auf Grundlage der belegten Informationen.')}><MessageSquare size={17} className="shrink-0 text-blue-600"/> Gesprächseinstieg für {lead.name}</Button>}
+                  <Button variant="outline" isDisabled={busy} className="h-auto min-h-11 justify-start gap-3 whitespace-normal bg-surface px-4 py-4 text-left" onPress={() => send('Analysiere meinen aktuellen Suchprompt und schlage eine präzisere Version für belegte IT-Bedarfssignale vor.')}><WandSparkles size={17} className="shrink-0 text-accent" aria-hidden="true"/> Suchprompt verbessern</Button>
+                  <Button variant="outline" isDisabled={busy} className="h-auto min-h-11 justify-start gap-3 whitespace-normal bg-surface px-4 py-4 text-left" onPress={() => send('Erkläre mir, wie wir zwei Suchprompts an denselben Originalquellen vergleichen können.')}><Plus size={17} className="shrink-0 text-accent" aria-hidden="true"/> Zwei Prompts vergleichen</Button>
+                  {lead && <Button variant="outline" isDisabled={busy} className="h-auto min-h-11 min-w-0 justify-start gap-3 whitespace-normal bg-surface px-4 py-4 text-left" onPress={() => send('Formuliere einen sachlichen Gesprächseinstieg für diesen Lead, ausschließlich auf Grundlage der belegten Informationen.')}><MessageSquare size={17} className="shrink-0 text-accent" aria-hidden="true"/><span className="min-w-0 [overflow-wrap:anywhere]">Gesprächseinstieg für {lead.name}</span></Button>}
                 </div>
-                <p className="mt-7 text-xs leading-relaxed text-slate-400">Nachrichten und ausgewählte Lead-Daten werden an deinen konfigurierten KI-Anbieter gesendet.</p>
+                <p className="mt-7 text-xs leading-relaxed text-muted">Nachrichten und ausgewählte Lead-Daten werden an deinen konfigurierten KI-Anbieter gesendet.</p>
               </div>}
-              <div className="space-y-6">
-                {items.map(item => <article key={item.id} className={item.role === 'user' ? 'ml-8' : 'mr-2'}>
-                  <p className={`mb-2 flex items-center gap-1.5 text-[11px] font-semibold ${item.role === 'user' ? 'justify-end text-slate-400' : 'text-blue-600'}`}>{item.role === 'user' ? 'DU' : <><Sparkles size={12}/> QUOVADIS</>}</p>
-                  <div className={`rounded-2xl px-4 py-3.5 text-sm leading-relaxed ${item.role === 'user' ? 'bg-slate-900 text-white' : 'border border-slate-200/80 bg-white text-slate-700'}`}><p className="whitespace-pre-wrap break-words">{item.content}</p></div>
-                  {item.evaluation && <Card className="mt-3 border border-slate-200 bg-white p-4 shadow-none">
-                    <Card.Header className="p-0"><Card.Title className="text-sm font-semibold">Promptvergleich</Card.Title><Card.Description className="line-clamp-2 break-all text-xs">{item.evaluation.source}</Card.Description></Card.Header>
-                    <Card.Content className="mt-4 grid grid-cols-2 gap-3 p-0">{[{name:'Variante A',result:item.evaluation.resultA},{name:'Variante B',result:item.evaluation.resultB}].map(variant => <div key={variant.name} className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{variant.name}</p><p className="mt-1 text-xl font-semibold text-slate-900">{variant.result.count}<span className="ml-1 text-xs font-normal text-slate-500">Treffer</span></p><p className="mt-1 text-xs text-slate-500">Ø Score {variant.result.averageScore}</p></div>)}</Card.Content>
-                    <Card.Footer className="mt-3 p-0 text-xs leading-relaxed text-slate-400">{item.evaluation.caveat}</Card.Footer>
+              <div className="min-w-0 space-y-6" role="log" aria-label="Nachrichten mit dem KI-Begleiter" aria-live="polite" aria-relevant="additions" aria-busy={loading}>
+                {items.map(item => <article key={item.id} className={`min-w-0 max-w-full ${item.role === 'user' ? 'ml-4 sm:ml-8' : 'sm:mr-2'}`}>
+                  <p className={`mb-2 flex items-center gap-1.5 text-[11px] font-semibold ${item.role === 'user' ? 'justify-end text-muted' : 'text-accent'}`}>{item.role === 'user' ? 'DU' : <><Sparkles size={12} aria-hidden="true"/> QUOVADIS</>}</p>
+                  <div className={`min-w-0 max-w-full rounded-2xl px-4 py-3.5 text-sm leading-relaxed ${item.role === 'user' ? 'bg-accent text-accent-foreground' : 'border border-border bg-surface text-foreground'}`}><p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{item.content}</p></div>
+                  {item.evaluation && <Card className="mt-3 min-w-0 max-w-full overflow-hidden border border-border bg-surface p-4 shadow-none">
+                    <Card.Header className="min-w-0 p-0"><Card.Title className="text-sm font-semibold">Promptvergleich</Card.Title><Card.Description className="line-clamp-2 break-all text-xs">{item.evaluation.source}</Card.Description></Card.Header>
+                    <Card.Content className="mt-4 grid min-w-0 grid-cols-2 gap-3 p-0">{[{name:'Variante A',result:item.evaluation.resultA},{name:'Variante B',result:item.evaluation.resultB}].map(variant => <div key={variant.name} className="min-w-0 rounded-xl bg-surface-secondary p-3 [overflow-wrap:anywhere]"><p className="text-xs text-muted">{variant.name}</p><p className="mt-1 text-xl font-semibold text-foreground">{variant.result.count}<span className="ml-1 text-xs font-normal text-muted">Treffer</span></p><p className="mt-1 text-xs text-muted">Ø Score {variant.result.averageScore}</p></div>)}</Card.Content>
+                    <Card.Footer className="mt-3 min-w-0 p-0 text-xs leading-relaxed text-muted [overflow-wrap:anywhere]">{item.evaluation.caveat}</Card.Footer>
                   </Card>}
-                  {item.proposal && <Card className="mt-3 border border-blue-100 bg-blue-50/50 p-4 shadow-none">
-                    <Card.Header className="p-0"><p className="mb-2 text-[10px] font-semibold tracking-wider text-blue-600">VORSCHLAG</p><Card.Title className="text-sm font-semibold">{proposalLabel(item.proposal)}</Card.Title></Card.Header>
-                    {proposalDetail(item.proposal) && <Card.Content className="mt-3 max-h-40 overflow-y-auto p-0 text-xs leading-relaxed whitespace-pre-wrap break-words text-slate-600">{proposalDetail(item.proposal)}</Card.Content>}
+                  {item.proposal && <Card className="mt-3 min-w-0 max-w-full overflow-hidden border border-accent/20 bg-accent-soft p-4 shadow-none">
+                    <Card.Header className="min-w-0 p-0"><p className="mb-2 text-[10px] font-semibold tracking-wider text-accent">VORSCHLAG</p><Card.Title className="text-sm font-semibold [overflow-wrap:anywhere]">{proposalLabel(item.proposal)}</Card.Title></Card.Header>
+                    {proposalDetail(item.proposal) && <Card.Content className="mt-3 max-h-40 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain p-0 text-xs leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">{proposalDetail(item.proposal)}</Card.Content>}
                     <Card.Footer className="mt-4 flex flex-wrap gap-2 p-0">
-                      {item.applied_at ? <Chip color="success" size="sm" variant="soft"><Check size={12}/><Chip.Label>{item.code_draft ? 'Entwurf vorbereitet' : 'Übernommen'}</Chip.Label></Chip> : <Button size="sm" variant="primary" isDisabled={busy} onPress={() => apply(item.id)}>{item.proposal.kind === 'code_change' ? <Code2 size={14}/> : <Check size={14}/>} {item.proposal.kind === 'code_change' ? 'Entwurf vorbereiten' : 'Änderung übernehmen'}</Button>}
-                      {item.code_draft && <Button size="sm" variant="outline" onPress={() => setReviewId(item.code_draft!.id)}><Code2 size={14}/> Diff prüfen</Button>}
-                      {item.code_draft?.pr_url && <Link href={item.code_draft.pr_url} target="_blank" rel="noopener noreferrer" className="text-xs">PR öffnen <ExternalLink size={12}/></Link>}
+                      {item.applied_at ? <Chip color="success" size="sm" variant="soft"><Check size={12} aria-hidden="true"/><Chip.Label>{item.code_draft ? 'Entwurf vorbereitet' : 'Übernommen'}</Chip.Label></Chip> : <Button size="sm" className="min-h-11 whitespace-normal" variant="primary" isDisabled={busy} onPress={() => apply(item.id)}>{item.proposal.kind === 'code_change' ? <Code2 size={14} className="shrink-0" aria-hidden="true"/> : <Check size={14} className="shrink-0" aria-hidden="true"/>} {item.proposal.kind === 'code_change' ? 'Entwurf vorbereiten' : 'Änderung übernehmen'}</Button>}
+                      {item.code_draft && <Button size="sm" className="min-h-11" variant="outline" onPress={() => setReviewId(item.code_draft!.id)}><Code2 size={14} aria-hidden="true"/> Diff prüfen</Button>}
+                      {item.code_draft?.pr_url && <Link href={item.code_draft.pr_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1 px-2 text-xs">PR öffnen <ExternalLink size={12} aria-hidden="true"/></Link>}
                     </Card.Footer>
                   </Card>}
                 </article>)}
-                {busy && <div className="flex items-center gap-2 text-xs text-slate-500" role="status"><Spinner size="sm"/> Dein Begleiter arbeitet …</div>}
-                <div ref={bottom}/>
               </div>
+              {busy && <div className="mt-5 flex items-center gap-2 text-xs text-muted" role="status"><Spinner size="sm"/> Dein Begleiter arbeitet …</div>}
+              {status && <Alert status={hasError ? 'danger' : 'success'} className="mt-5 min-w-0"><Alert.Content className="min-w-0"><Alert.Description className="text-xs [overflow-wrap:anywhere]">{status}</Alert.Description></Alert.Content></Alert>}
             </Modal.Body>
-            <Modal.Footer className="block border-t border-slate-100 bg-white p-5">
-              {status && <Alert status={hasError ? 'danger' : 'success'} className="mb-3"><Alert.Content><Alert.Description className="text-xs">{status}</Alert.Description></Alert.Content></Alert>}
-              <Form className="w-full" onSubmit={event => {event.preventDefault();void send();}}>
-                <TextField className="w-full" value={draft} onChange={setDraft} aria-label="Nachricht an den Begleiter" isDisabled={busy}>
+            <Modal.Footer className="m-0 block min-w-0 shrink-0 border-t border-border bg-surface px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
+              <Form className="flex w-full min-w-0 items-end gap-2" onSubmit={event => {event.preventDefault();void send();}}>
+                <TextField className="min-w-0 flex-1" value={draft} onChange={setDraft} aria-label="Nachricht an den Begleiter" isDisabled={busy}>
                   <Label className="sr-only">Nachricht an den Begleiter</Label>
-                  <TextArea placeholder="Frag deinen Begleiter …" className="min-h-24 w-full resize-none bg-slate-50" onKeyDown={event => {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault();void send();}}}/>
+                  <TextArea rows={2} placeholder="Frag deinen Begleiter …" enterKeyHint="send" className="max-h-32 min-h-16 w-full min-w-0 resize-none overflow-y-auto bg-field text-base text-foreground sm:text-sm" onKeyDown={event => {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault();void send();}}}/>
                 </TextField>
-                <div className="mt-3 flex items-center justify-between gap-3"><p className="text-[11px] text-slate-400">Enter senden · Shift + Enter neue Zeile</p><Button type="submit" isIconOnly variant="primary" size="sm" isDisabled={busy || !draft.trim()} aria-label="Nachricht senden"><ArrowUp size={18}/></Button></div>
+                <Button type="submit" isIconOnly variant="primary" className="size-11 min-h-11 min-w-11 shrink-0" isDisabled={busy || !draft.trim()} aria-label="Nachricht senden"><ArrowUp size={20} aria-hidden="true"/></Button>
               </Form>
+              <p className="mt-2 hidden text-[11px] text-muted sm:block">Enter senden · Shift + Enter neue Zeile</p>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
