@@ -31,13 +31,46 @@ export async function init() {
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS research_error TEXT;
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ;
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS researched_at TIMESTAMPTZ;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS company_key TEXT;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS need_status TEXT NOT NULL DEFAULT 'unclassified';
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS external_readiness TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS assessment JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
+    CREATE UNIQUE INDEX IF NOT EXISTS opportunities_company_key_unique ON opportunities(company_key) WHERE company_key IS NOT NULL;
     CREATE INDEX IF NOT EXISTS opportunities_research_queue ON opportunities(research_status,detected_at);
+    CREATE TABLE IF NOT EXISTS opportunity_signals (
+      id BIGSERIAL PRIMARY KEY,
+      opportunity_id BIGINT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+      source_url TEXT NOT NULL,
+      evidence_quote TEXT NOT NULL,
+      signal TEXT NOT NULL,
+      category TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      source_reliability TEXT NOT NULL,
+      published_at TIMESTAMPTZ,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_checked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      status TEXT NOT NULL DEFAULT 'active',
+      content_hash TEXT,
+      UNIQUE(opportunity_id,source_url,evidence_quote)
+    );
+    CREATE INDEX IF NOT EXISTS opportunity_signals_check_queue ON opportunity_signals(status,last_checked_at);
+    CREATE TABLE IF NOT EXISTS opportunity_signal_events (
+      id BIGSERIAL PRIMARY KEY,
+      signal_id BIGINT NOT NULL REFERENCES opportunity_signals(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      detail TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),config JSONB NOT NULL);
     CREATE TABLE IF NOT EXISTS admin_user(id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL,password_hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,expires_at TIMESTAMPTZ NOT NULL);
     CREATE TABLE IF NOT EXISTS mail_dispatches(day DATE PRIMARY KEY,sent_at TIMESTAMPTZ);
     CREATE TABLE IF NOT EXISTS research_runs(id BIGSERIAL PRIMARY KEY,started_at TIMESTAMPTZ DEFAULT now(),finished_at TIMESTAMPTZ,imported INTEGER DEFAULT 0,error TEXT);
     ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS researched INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS searched INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS verified INTEGER NOT NULL DEFAULT 0;
     CREATE TABLE IF NOT EXISTS assistant_messages(id BIGSERIAL PRIMARY KEY,role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,proposal JSONB,evaluation JSONB,applied_at TIMESTAMPTZ,code_draft_id BIGINT,created_at TIMESTAMPTZ DEFAULT now());
     ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS evaluation JSONB;
     ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS code_draft_id BIGINT;
