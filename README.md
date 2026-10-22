@@ -12,9 +12,14 @@ Alle fachlichen Einstellungen erfolgen in der Oberfläche. PostgreSQL wird von D
 
 ## Recherche und MCP
 
-Unter **Quellen und Plugins** können Website-URLs oder Streamable-HTTP-MCP-Server mit Tool-Name und JSON-Argumenten eingetragen und einzeln aktiviert werden. **Tools laden** liest die Tool-Liste des MCP-Servers. **Recherche jetzt starten** verarbeitet aktivierte Quellen sofort. Der interne Docker-Worker führt denselben Lauf im konfigurierten Intervall aus und beginnt 60 Sekunden nach dem Start. Quellenfehler werden protokolliert.
+Unter **Quellen und Plugins** werden Quellen einem Zweck zugeordnet:
 
-MCP-Tools müssen vollständige HTTP(S)-Quellen-URLs im Tool-Ergebnis liefern. Ein Tool ohne belegte URL erzeugt keine Opportunity. Website-Ergebnisse müssen die konfigurierte Seiten-URL als Nachweis nutzen. Eine bereits vorhandene Quellen-URL aktualisiert den bestehenden Eintrag. Die Skill-Auswahl begrenzt die Signalarten, nach denen das KI-Modell sucht.
+1. **Signal erkennen:** QuoVadis liest konfigurierte Websites oder MCP-Tools und sucht nach konkreten, aktuellen Anlässen für IT-Dienstleistungen, etwa IT-Stellenanzeigen, Projektausschreibungen, angekündigte Migrationen oder eine ausdrückliche Dienstleistersuche. Ein Treffer benötigt eine benannte Firma, eine Quellen-URL und ein wörtliches Zitat aus dem gelieferten Quellentext. Nur aktivierte Signalarten werden berücksichtigt. Ein Treffer wird zunächst als **Signal erkannt** gespeichert.
+2. **Firma vertiefen:** Erst für einen solchen Treffer startet Deep Research. QuoVadis liest eine aus dem Signal belegte Firmenwebsite mit relevanten Unterseiten sowie aktivierte MCP-Vertiefungsquellen. MCP-Argumente können die Platzhalter `{{company_name}}`, `{{city}}`, `{{signal}}`, `{{company_url}}` und `{{source_url}}` enthalten. Zusätzliche Befunde brauchen eine genaue URL und ein überprüfbares Zitat. Öffentliche `mailto:`- und `tel:`-Angaben der Firmenwebsite werden mit ihrer Fundstelle gespeichert. Fehlt eine weitere belastbare Quelle, bleibt der Treffer sichtbar mit Status **Weitere Quellen benötigt**.
+
+Der interne Worker führt die Signalerkennung im eingestellten Intervall aus und verarbeitet offene Deep-Research-Treffer zusätzlich alle zwei Minuten. Über die Oberfläche können beide Schritte manuell ausgelöst werden. Bestandsdaten ohne Signalzitat bleiben als Altbestand gekennzeichnet und gehen nicht nachträglich in die Deep-Research-Warteschlange.
+
+MCP-Tools müssen vollständige HTTP(S)-Quellen-URLs im Tool-Ergebnis liefern. Website-Signale referenzieren die konfigurierte URL. Die Quellenliste ist im Frontend konfigurierbar; die Einbindung öffentlicher Portale setzt passende URLs, Feeds oder MCP-Tools voraus.
 
 OpenAI wird über die Chat-Completions-API, Claude über die Messages-API angesprochen. Modellname und Anbieter sind in der Oberfläche wählbar. Die angezeigten Modellnamen können geändert werden, wenn der eigene API-Zugang andere Modelle unterstützt. API-Schlüssel und SMTP-Passwort werden mit AES-256-GCM in PostgreSQL verschlüsselt und nach dem Speichern nicht an den Browser zurückgegeben.
 
@@ -22,7 +27,7 @@ SMTP kann in der Oberfläche konfiguriert und per **Testmail senden** geprüft w
 
 Die Demo-Unternehmen sind fiktiv. Ohne gespeicherte Opportunities zeigt die Oberfläche weiterhin die Demo an. Rechercheergebnisse sollten vor geschäftlicher Nutzung geprüft werden.
 
-Für den Ausbau der Recherche gibt es einen [Katalog öffentlicher Quellen](docs/quellenkatalog.md) und eine [REA-Analyse der öffentlich sichtbaren OpenProspect-Abläufe](docs/openprospect-analyse.md). Der Katalog ist eine Recherchegrundlage; die genannten Portale sind nicht automatisch angebunden. Die aktuelle Website-Recherche liest jeweils die konfigurierte URL und bildet noch kein Dossier aus mehreren Quellen pro Firma.
+Für den Ausbau der Recherche gibt es einen [Katalog öffentlicher Quellen](docs/quellenkatalog.md) und eine [REA-Analyse der öffentlich sichtbaren OpenProspect-Abläufe](docs/openprospect-analyse.md). Der Katalog ist eine Recherchegrundlage; die genannten Portale sind nicht automatisch angebunden. Deep Research bildet für Treffer ein Dossier aus der Firmenwebsite und konfigurierten MCP-Quellen; ein generischer Websuchdienst gehört nicht automatisch zum System.
 
 Für MCP-Server mit Bearer-Authentifizierung kann pro Quelle ein Token im Frontend hinterlegt werden. Es wird wie die anderen Secrets verschlüsselt gespeichert.
 
