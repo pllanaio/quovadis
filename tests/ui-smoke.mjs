@@ -23,6 +23,7 @@ const items=[
 const intelligence=testLoader()('lib/business-triggers.ts').buildEventIntelligence(items[0].evidence_quote,'jobs',{hypotheses:['Eine ergänzende Unterstützung beim Aufbau könnte sinnvoll sein.'],offer:{title:'Microsoft-365-Bestandsaufnahme',description:'Begrenztes Einstiegsprojekt als Gesprächsangebot.',benefit:'Planungsgrundlage',scope:'Analyse und Maßnahmenplan',hoursMin:5,hoursMax:12,monthlyPotential:'high'}},{hourlyRate:100,serviceOffer:config.serviceOffer,model:config.model});
 Object.assign(items[0],{opportunity_category:intelligence.category,it_need_confidence:intelligence.itNeedConfidence,entry_opportunity_score:intelligence.entryOpportunityScore,event_intelligence:intelligence});
 let deletes=0,deepResumes=0;
+const assistantMessages=[];
 const activities=[];
 function overview(){const active=items.filter(item=>!item.is_stale);return {demo:false,items,stats:{total:items.length,active:active.length,stale:items.length-active.length,highMatch:active.filter(item=>item.score>=80).length,researched:items.filter(item=>item.research_status==='complete').length,pending:items.filter(item=>item.research_status!=='complete').length,deepRunning:0,deepWorkerLastSeen:now,contactable:1,newToday:0,averageScore:80},charts:{scoreBands:[{label:'Hohe Passung',color:'green',count:active.filter(item=>item.score>=80).length},{label:'Mittlere Passung',color:'amber',count:1},{label:'Geringe Passung',color:'red',count:0}],cities:[{city:'München',count:1},{city:'Augsburg',count:1}]},latestRun:{id:1,status:'completed',stage:'Recherche abgeschlossen',started_at:now,finished_at:now,searched:31,discovered:214,verified:60,imported:12,rejected:35},limit:500}}
 await page.route('**/api/**',async route=>{
@@ -38,7 +39,13 @@ await page.route('**/api/**',async route=>{
  else if(path==='/api/research')json=req.method()==='POST'?{queued:true,run:{id:2,status:'queued'}}:{runs:[overview().latestRun]};
  else if(path==='/api/activities'){if(req.method()==='POST'){const entry=req.postDataJSON();activities.push({...entry,id:1,created_at:now});const lead=items.find(item=>String(item.id)===String(entry.id));if(entry.note.trim()){lead.is_stale=false;lead.chart_eligible=true;lead.stale_at=daysAgo(-10)}json={ok:true,refreshesRanking:!!entry.note.trim()}}else json={items:activities}}
  else if(path==='/api/opportunities/signals')json={signals:[{id:1,source_url:'https://example.org/karriere',evidence_quote:items[0].evidence_quote,signal:items[0].signal,category:'jobs',priority:'A',source_reliability:'first_party',published_at:null,last_checked_at:now,status:'active'}],events:[]};
- else if(path==='/api/assistant')json={messages:[]};
+ else if(path==='/api/assistant'){
+  if(req.method()==='POST'){
+   const {message}=req.postDataJSON();assert.equal(message,'Prüfe https://example.org/');
+   const result={id:'51',role:'assistant',content:'Die Firmenprüfung ist eingeplant.',company_review:{id:'8',url:'https://example.org/',status:'queued'}};
+   assistantMessages.push({id:'50',role:'user',content:message},result);json=result;
+  }else json={items:assistantMessages};
+ }
  await route.fulfill({json});
 });
 try{
@@ -110,6 +117,19 @@ try{
  for(const name of ['KI & Quellen','Verbindungen','Konto'])await page.getByRole('tab',{name,exact:true}).click();
  await page.getByRole('button',{name:'KI-Begleiter',exact:true}).click();
  await page.getByRole('dialog').waitFor();
+ await page.getByRole('textbox',{name:'Nachricht an den Begleiter'}).fill('Prüfe https://example.org/');
+ await page.getByRole('button',{name:'Nachricht senden',exact:true}).click();
+ await page.getByText('Firmenprüfung eingeplant · wartet auf den Hintergrunddienst',{exact:true}).waitFor();
+ await page.setViewportSize({width:320,height:844});
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Company review status fits a 320px chat');
+ await page.screenshot({path:output+'/company-review-mobile.png',animations:'disabled'});
+ Object.assign(assistantMessages.at(-1).company_review,{status:'complete',name:items[0].name,opportunityId:items[0].id});
+ await page.getByText('Vertieft · Dossier und Bewertung unter „Alle Firmen“ verfügbar',{exact:true}).waitFor({timeout:12000});
+ await page.getByRole('button',{name:'Firmendossier öffnen',exact:true}).click();
+ await page.getByRole('heading',{name:items[0].name,exact:true}).waitFor();
+ await page.getByRole('button',{name:'Firmendossier schließen'}).click();
+ await page.setViewportSize({width:1536,height:1080});
+ await page.getByRole('button',{name:'KI-Begleiter',exact:true}).click();
  await page.screenshot({path:output+'/assistant.png',fullPage:true,animations:'disabled'});
  await page.keyboard.press('Escape');
  await page.setViewportSize({width:390,height:844});

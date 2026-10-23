@@ -8,7 +8,9 @@ import CodeReviewPanel from './code-review-panel';
 type Proposal = {kind:string; instruction?:string; value?:unknown; sourceId?:string; enabled?:boolean; source?:{name:string;url:string}; dailyAt?:string; intervalMinutes?:number; leadId?:number; score?:number; summary?:string; text?:string};
 type Evaluation = {source:string; resultA:{count:number;averageScore:number;leads:{name:string;sourceUrl:string}[]}; resultB:{count:number;averageScore:number;leads:{name:string;sourceUrl:string}[]}; caveat:string};
 type CodeDraft = {id:string;summary:string;status:string;pr_url?:string|null};
-type Message = {id:string;code_draft?:CodeDraft|null;role:'user'|'assistant';content:string;proposal?:Proposal|null;applied_at?:string|null;evaluation?:Evaluation|null};
+type CompanyReview={id:string;url:string;status:string;name?:string;opportunityId?:string;error?:string};
+type Message = {id:string;company_review?:CompanyReview|null;code_draft?:CodeDraft|null;role:'user'|'assistant';content:string;proposal?:Proposal|null;applied_at?:string|null;evaluation?:Evaluation|null};
+const activeReview=(item:Message)=>!!item.company_review&&['queued','running','pending','researching','failed','needs_source'].includes(item.company_review.status);
 
 function proposalLabel(proposal: Proposal) {
   switch (proposal.kind) {
@@ -35,7 +37,7 @@ function proposalDetail(proposal: Proposal) {
 }
 function messageError(error: unknown) {return error instanceof Error ? error.message.replace(/^Error: /, '') : 'Die Anfrage konnte nicht abgeschlossen werden.';}
 
-export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:number;name:string};onChanged:()=>void;onClose:()=>void}) {
+export default function AssistantPanel({lead, onChanged, onClose, onOpenCompany}: {onOpenCompany?:(id:string)=>void;lead?:{id:number;name:string};onChanged:()=>void;onClose:()=>void}) {
   const [items, setItems] = useState<Message[]>([]);
   const [reviewId, setReviewId] = useState<string|null>(null);
   const [draft, setDraft] = useState('');
@@ -45,6 +47,18 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
   const [hasError, setHasError] = useState(false);
   const conversation = useRef<HTMLDivElement>(null);
   const headingId = useId();
+  const hasActiveReview=items.some(activeReview);
+  const changedRef=useRef(onChanged);
+  useEffect(()=>{changedRef.current=onChanged},[onChanged]);
+  useEffect(()=>{
+    if(!hasActiveReview||busy)return;
+    const controller=new AbortController();
+    const timer=setInterval(async()=>{
+      try{const response=await fetch('/api/assistant',{signal:controller.signal});if(!response.ok)return;const data=await response.json();if(!controller.signal.aborted){setItems(data.items||[]);changedRef.current()}}
+      catch{/* The next poll retries a transient connection error. */}
+    },6000);
+    return()=>{clearInterval(timer);controller.abort()};
+  },[hasActiveReview,busy]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -71,6 +85,7 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
       const result = await response.json();
       if (!response.ok) throw Error(result.error || 'Die KI-Anfrage ist fehlgeschlagen.');
       setItems(old => [...old.map(item => item.id === optimistic.id ? {...item, id:`user-${result.id}`} : item), result]);
+      if(result.company_review)onChanged();
     } catch (error) {
       setItems(old => old.filter(item => item.id !== optimistic.id));setDraft(message);setStatus(messageError(error));setHasError(true);
     } finally {setBusy(false);}
@@ -100,7 +115,7 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
               {!loading && !items.length && <div className="min-w-0 py-3 sm:py-6">
                 <div className="mb-6 inline-flex size-12 items-center justify-center rounded-2xl border border-border bg-surface text-accent"><MessageSquare size={23} aria-hidden="true"/></div>
                 <h3 className="text-xl font-semibold tracking-tight text-foreground">Woran arbeiten wir?</h3>
-                <p className="mt-3 text-sm leading-relaxed text-muted">Entwickle Suchprompts, ordne Leads ein oder bereite den nächsten Kontakt vor. Konkrete Änderungen kannst du direkt übernehmen.</p>
+                <p className="mt-3 text-sm leading-relaxed text-muted">Sende eine Firmen-URL für eine vollständige Recherche mit Dossier und Bewertung. Oder entwickle Suchprompts und bereite den nächsten Kontakt vor.</p>
                 <div className="mt-7 flex flex-col gap-3">
                   <Button variant="outline" isDisabled={busy} className="h-auto min-h-11 justify-start gap-3 whitespace-normal bg-surface px-4 py-4 text-left" onPress={() => send('Analysiere meinen aktuellen Suchprompt und schlage eine präzisere Version für belegte IT-Bedarfssignale vor.')}><WandSparkles size={17} className="shrink-0 text-accent" aria-hidden="true"/> Suchprompt verbessern</Button>
                   <Button variant="outline" isDisabled={busy} className="h-auto min-h-11 justify-start gap-3 whitespace-normal bg-surface px-4 py-4 text-left" onPress={() => send('Erkläre mir, wie wir zwei Suchprompts an denselben Originalquellen vergleichen können.')}><Plus size={17} className="shrink-0 text-accent" aria-hidden="true"/> Zwei Prompts vergleichen</Button>
@@ -112,6 +127,7 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
                 {items.map(item => <article key={item.id} className={`min-w-0 max-w-full ${item.role === 'user' ? 'ml-4 sm:ml-8' : 'sm:mr-2'}`}>
                   <p className={`mb-2 flex items-center gap-1.5 text-[11px] font-semibold ${item.role === 'user' ? 'justify-end text-muted' : 'text-accent'}`}>{item.role === 'user' ? 'DU' : <><Sparkles size={12} aria-hidden="true"/> QUOVADIS</>}</p>
                   <div className={`min-w-0 max-w-full rounded-2xl px-4 py-3.5 text-sm leading-relaxed ${item.role === 'user' ? 'bg-accent text-accent-foreground' : 'border border-border bg-surface text-foreground'}`}><p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{item.content}</p></div>
+                  {item.company_review&&<Card className="mt-3 min-w-0 border border-border bg-surface p-4 shadow-none"><Card.Content className="space-y-2 p-0"><p className="flex items-center gap-2 text-sm font-semibold">{['queued','running','pending','researching'].includes(item.company_review.status)?<Spinner size="sm"/>:<Check size={16}/>} {item.company_review.name||'Firmenprüfung'}</p><p className="text-xs text-muted">{item.company_review.status==='complete'?'Vertieft · Dossier und Bewertung unter „Alle Firmen“ verfügbar':item.company_review.status==='deleted'?'Firmeneintrag wurde gelöscht':['intake_failed','failed','needs_source'].includes(item.company_review.status)?'Prüfung derzeit nicht abgeschlossen · URL bei Bedarf erneut senden':item.company_review.status==='pending'||item.company_review.status==='researching'?'Firma erfasst · Deep Dive läuft':item.company_review.status==='queued'?'Firmenprüfung eingeplant · wartet auf den Hintergrunddienst':'Website wird geprüft · anschließend folgt der Deep Dive'}</p><p className="break-all text-xs text-muted">{item.company_review.url}</p>{item.company_review.opportunityId&&onOpenCompany&&<Button variant="outline" size="sm" className="min-h-11" onPress={()=>onOpenCompany(item.company_review!.opportunityId!)}>Firmendossier öffnen <ExternalLink size={14}/></Button>}{item.company_review.error&&<p className="text-xs text-warning [overflow-wrap:anywhere]">{item.company_review.error}</p>}</Card.Content></Card>}
                   {item.evaluation && <Card className="mt-3 min-w-0 max-w-full overflow-hidden border border-border bg-surface p-4 shadow-none">
                     <Card.Header className="min-w-0 p-0"><Card.Title className="text-sm font-semibold">Promptvergleich</Card.Title><Card.Description className="line-clamp-2 break-all text-xs">{item.evaluation.source}</Card.Description></Card.Header>
                     <Card.Content className="mt-4 grid min-w-0 grid-cols-2 gap-3 p-0">{[{name:'Variante A',result:item.evaluation.resultA},{name:'Variante B',result:item.evaluation.resultB}].map(variant => <div key={variant.name} className="min-w-0 rounded-xl bg-surface-secondary p-3 [overflow-wrap:anywhere]"><p className="text-xs text-muted">{variant.name}</p><p className="mt-1 text-xl font-semibold text-foreground">{variant.result.count}<span className="ml-1 text-xs font-normal text-muted">Treffer</span></p><p className="mt-1 text-xs text-muted">Ø Score {variant.result.averageScore}</p></div>)}</Card.Content>
@@ -135,7 +151,7 @@ export default function AssistantPanel({lead, onChanged, onClose}: {lead?:{id:nu
               <Form className="flex w-full min-w-0 items-end gap-2" onSubmit={event => {event.preventDefault();void send();}}>
                 <TextField className="min-w-0 flex-1" value={draft} onChange={setDraft} aria-label="Nachricht an den Begleiter" isDisabled={busy}>
                   <Label className="sr-only">Nachricht an den Begleiter</Label>
-                  <TextArea rows={2} placeholder="Frag deinen Begleiter …" enterKeyHint="send" className="max-h-32 min-h-16 w-full min-w-0 resize-none overflow-y-auto bg-field text-base text-foreground sm:text-sm" onKeyDown={event => {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault();void send();}}}/>
+                  <TextArea rows={2} placeholder="Firmen-URL oder Nachricht eingeben …" enterKeyHint="send" className="max-h-32 min-h-16 w-full min-w-0 resize-none overflow-y-auto bg-field text-base text-foreground sm:text-sm" onKeyDown={event => {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault();void send();}}}/>
                 </TextField>
                 <Button type="submit" isIconOnly variant="primary" className="size-11 min-h-11 min-w-11 shrink-0" isDisabled={busy || !draft.trim()} aria-label="Nachricht senden"><ArrowUp size={20} aria-hidden="true"/></Button>
               </Form>

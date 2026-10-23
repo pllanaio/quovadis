@@ -46,6 +46,14 @@ async function deepLoop(){
  setTimeout(deepLoop,nextDelay);
 }
 
+// User-submitted company websites are independent from the daily discovery run.
+async function companyLoop(){
+ let delay=30000;
+ try{const result=await request('/api/research/companies','POST',undefined,5*60*1000);if(result.ready>0)delay=250}
+ catch(error){console.error('Manuelle Firmenprüfung:',String(error))}
+ setTimeout(companyLoop,delay);
+}
+
 // Source monitoring has its own loop; slow sites cannot stall the dossier queue.
 async function monitorLoop(){
  try{
@@ -64,5 +72,6 @@ async function mailLoop(){
 setTimeout(scheduleLoop,5000);
 setTimeout(researchLoop,10000);
 setTimeout(deepLoop,15000);
+setTimeout(companyLoop,12000);
 setTimeout(monitorLoop,20000);
 setTimeout(mailLoop,60000);

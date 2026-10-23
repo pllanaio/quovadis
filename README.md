@@ -159,6 +159,12 @@ OpenAI wird über die Chat-Completions-API, Claude über die Messages-API angesp
 
 Über **KI-Begleiter** lässt sich direkt im Tool mit dem konfigurierten OpenAI- oder Claude-Modell schreiben. Der Chat kennt Suchauftrag, Region, eigenes IT-Angebot, aktivierte Skills und Quellen sowie gegebenenfalls den ausgewählten Lead. Er kann Suchprompts formulieren, Leads einordnen und E-Mail-Texte entwerfen. Er versendet aus dem Chat keine E-Mails.
 
+### Firma per URL prüfen
+
+Sende dem Begleiter eine Firmen-URL oder beispielsweise **„Prüfe https://firma.de“**. Der Auftrag wird in PostgreSQL gespeichert und vom Hintergrunddienst verarbeitet, unabhängig vom täglichen Suchlauf. Zuerst werden Firmenname und Standort anhand gelesener Seiten verifiziert. Danach folgen dieselbe Vertiefung, Kontakt- und Kennzahlenrecherche sowie Bewertung wie bei automatisch gefundenen Firmen. Die Prüfung ist auch ohne Firecrawl und ohne öffentliche Telefonnummer oder E-Mail möglich. Manuell eingereichte Firmen dürfen außerhalb der automatischen Suchregion liegen.
+
+Der Chat zeigt den Status und bietet **Firmendossier öffnen** an, sobald die Firma erfasst ist. Unter **Alle Firmen** erscheint der Eintrag ebenfalls. Ohne belegten Anlass heißt die Einordnung **Kein IT-Bedarf belegt**; ein später verifiziertes Signal wird regulär übernommen. Bestehende Firmen und Notizen bleiben erhalten. Unterbrochene Aufträge werden wieder aufgenommen; nach drei erfolglosen Versuchen wird der Fehler angezeigt und die URL kann erneut gesendet werden. Ein gelöschter Eintrag wird durch einen bereits abgeschlossenen URL-Auftrag nicht wieder angelegt.
+
 Für einen Promptvergleich kann der Begleiter dieselben geprüften Originalseiten oder eine konfigurierte feste Quelle mit zwei Promptvarianten auswerten. Trefferzahl, durchschnittlicher Modell-Score und Quellennachweise werden angezeigt. Das ist eine Orientierung, keine objektive Qualitätsmessung.
 
 Der Begleiter kann Änderungen an Suchprompt, Recherche-Skills, Quellen, täglicher Startzeit, Lead-Notizen und Lead-Bewertungen sowie einen Recherchelauf vorschlagen. Jede Änderung wird erst durch **Änderung übernehmen** ausgeführt. API-Schlüssel und SMTP-Passwörter bleiben außerhalb des Chatkontexts. Chatverlauf und Promptvergleiche werden in PostgreSQL gespeichert.

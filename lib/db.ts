@@ -134,6 +134,14 @@ export async function init() {
     CREATE UNIQUE INDEX IF NOT EXISTS research_runs_scheduled_day_unique ON research_runs(scheduled_date) WHERE scheduled_date IS NOT NULL;
     CREATE INDEX IF NOT EXISTS research_runs_queue ON research_runs(status,started_at);
     CREATE TABLE IF NOT EXISTS assistant_messages(id BIGSERIAL PRIMARY KEY,role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,proposal JSONB,evaluation JSONB,applied_at TIMESTAMPTZ,code_draft_id BIGINT,created_at TIMESTAMPTZ DEFAULT now());
+    CREATE TABLE IF NOT EXISTS company_reviews (
+      id BIGSERIAL PRIMARY KEY,url TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',
+      opportunity_id BIGINT REFERENCES opportunities(id) ON DELETE SET NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,next_attempt_at TIMESTAMPTZ,error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS company_reviews_queue ON company_reviews(status,next_attempt_at,id);
+    ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS company_review_id BIGINT REFERENCES company_reviews(id) ON DELETE SET NULL;
     ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS evaluation JSONB;
     ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS code_draft_id BIGINT;
     CREATE TABLE IF NOT EXISTS code_drafts(id BIGSERIAL PRIMARY KEY,assistant_message_id BIGINT UNIQUE NOT NULL,instruction TEXT NOT NULL,owner TEXT NOT NULL,repo TEXT NOT NULL,base_branch TEXT NOT NULL,base_sha TEXT NOT NULL,summary TEXT NOT NULL,files JSONB NOT NULL,diff_preview TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'draft',pr_url TEXT,created_at TIMESTAMPTZ DEFAULT now());
