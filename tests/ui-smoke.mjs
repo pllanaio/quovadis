@@ -14,7 +14,7 @@ await page.addInitScript(()=>Object.defineProperty(globalThis.crypto,'randomUUID
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
 const now=new Date().toISOString();
 const daysAgo=days=>new Date(Date.now()-days*86400000).toISOString();
-let config={dailyAt:'07:00',timezone:'Europe/Berlin',dailyEnabled:true,cities:['München','Augsburg','Landsberg am Lech'],radiusKm:40,serviceOffer:'Externe IT-Betreuung, Microsoft 365, IT-Security und Automatisierung für KMU.',searchPrompt:'Suche belegte aktuelle Bedarfssignale im konfigurierten Suchgebiet.',skills:['jobs','tenders','migration','providers','growth','social','news'],intervalMinutes:1440,reminderDays:7,provider:'openai',model:'gpt-4.1-mini',openaiKey:'',openaiKeySet:true,anthropicKey:'',firecrawlKey:'',agenticSearch:true,searchLimit:60,sources:[],github:{owner:'pllanaio',repo:'quovadis',baseBranch:'main',token:''},smtp:{host:'',port:587,secure:false,user:'',password:'',from:'',to:''}};
+let config={dailyAt:'07:00',timezone:'Europe/Berlin',dailyEnabled:true,cities:['München','Augsburg','Landsberg am Lech'],radiusKm:40,serviceOffer:'Externe IT-Betreuung, Microsoft 365, IT-Security und Automatisierung für KMU.',searchPrompt:'Suche belegte aktuelle Bedarfssignale im konfigurierten Suchgebiet.',skills:['jobs','tenders','migration','providers','growth','social','news'],intervalMinutes:1440,reminderDays:7,provider:'openai',model:'gpt-4.1-mini',openaiKey:'',openaiKeySet:true,anthropicKey:'',firecrawlKey:'',firecrawlKeySet:true,firecrawlEnabled:false,localWebSearch:false,searchBackend:'native',nativeWebSearch:true,agenticSearch:true,searchLimit:60,sources:[],github:{owner:'pllanaio',repo:'quovadis',baseBranch:'main',token:''},smtp:{host:'',port:587,secure:false,user:'',password:'',from:'',to:''}};
 const items=[
  {id:1,name:'Beispielfirma Industrie GmbH',city:'München',signal:'Erstmaliger Aufbau einer internen IT',summary:'Die Firma sucht eine erste IT-Ansprechperson für Infrastruktur und Microsoft 365.',score:88,email:'kontakt@example.org',phone:'+49 89 123456',company_url:'https://example.org',source_url:'https://example.org/karriere',evidence_quote:'Sie bauen unsere interne IT auf und entwickeln unsere Microsoft-365-Umgebung weiter.',research_status:'complete',created_at:daysAgo(2),last_checked_at:now,stale_at:daysAgo(-8),is_stale:false,chart_eligible:true,need_status:'proven',external_readiness:'unknown',assessment:{matchForecast:'Die belegte Aufbauaufgabe passt zu einer laufenden externen Betreuung.',serviceFit:'Microsoft 365 und Infrastruktur passen zum hinterlegten Angebot.',scoreReason:'Konkreter Aufbauauftrag mit veröffentlichten Geschäftskontakten.',scoreBreakdown:{need:32,fit:22,recency:14,economics:12,contact:8},conversationOpener:'Welche Unterstützung wünschen Sie sich beim veröffentlichten Aufbau Ihrer IT?',pricing:{hourlyRateMin:100,hourlyRateMax:125,estimated:true},monthlyPotential:'high',monthlyReason:'Aufbau und Betrieb erzeugen voraussichtlich laufenden Betreuungsbedarf.',contacts:[{kind:'linkedin',value:'https://www.linkedin.com/company/example',sourceUrl:'https://example.org/impressum',quote:'Unser Unternehmensprofil',checkedAt:now}],facts:[{field:'Umsatz 2025',value:'Öffentlich belegte Kennzahl – Testdatensatz',group:'financial',sourceUrl:'https://example.org/bericht',quote:'Kennzahl aus einem Testbeleg.',checkedAt:now,sourceReliability:'first_party'}]}},
  {id:2,name:'Beispiel Logistik GmbH',city:'Augsburg',signal:'Modernisierung der IT-Infrastruktur',summary:'Projekt für Netzwerk und Backup.',score:72,source_url:'https://example.net/jobs',research_status:'pending',created_at:daysAgo(1),stale_at:daysAgo(-9),is_stale:false,chart_eligible:true},
@@ -29,8 +29,8 @@ await page.route('**/api/**',async route=>{
  const req=route.request(),url=new URL(req.url()),path=url.pathname;
  let json={};
  if(path==='/api/auth')json={authenticated:true,setup:false};
- else if(path==='/api/settings'){if(req.method()==='PUT')config={...config,...req.postDataJSON()};json=config}
- else if(path==='/api/opportunities'){if(req.method()==='DELETE'){const body=req.postDataJSON();assert.equal(body.blockRediscovery,true);deletes++;items.splice(items.findIndex(item=>item.id===body.id),1);json={ok:true,blocked:true}}else json=overview()}
+ else if(path==='/api/settings'){if(req.method()==='PUT'){const body=req.postDataJSON();config={...config,...body,...(body.clearFirecrawlKey?{firecrawlKeySet:false,firecrawlKey:'',clearFirecrawlKey:false}:{})}};json=config}
+ else if(path==='/api/opportunities'){if(req.method()==='DELETE'){const body=req.postDataJSON();assert.ok(!('blockRediscovery' in body));assert.ok(Array.isArray(body.ids));deletes++;for(const id of body.ids){const index=items.findIndex(item=>item.id===id);if(index>=0)items.splice(index,1)}json={ok:true,deleted:body.ids.length}}else json=overview()}
  else if(path==='/api/opportunities/events')json={events:[{id:10,event_description:items[0]?.signal,evidence_quote:items[0]?.evidence_quote,source_url:'https://example.org/karriere',verification_status:'verified',published_at:null,checked_at:now,opportunities:[{id:11,hypothesis:intelligence.hypotheses[0].statement,intelligence}]}]};
  else if(path==='/api/opportunities/exclusions')json={items:[]};
  else if(path==='/api/research/usage')json={summary:{calls:2,input_tokens:1000,output_tokens:500,estimated_cost_usd:null,unpriced_calls:2}};
@@ -43,6 +43,7 @@ await page.route('**/api/**',async route=>{
 try{
  await page.goto(baseURL);
  await page.getByRole('heading',{name:'Dein Opportunity Radar'}).waitFor();
+ assert.equal(await page.locator('link[rel="apple-touch-icon"]').count(),1);assert.equal((await page.request.get(baseURL+'/manifest.webmanifest')).status(),200);assert.equal((await page.request.get(baseURL+'/favicon.ico')).status(),200);
  await page.getByRole('button',{name:'Dossier öffnen: Beispielfirma Industrie GmbH'}).waitFor();
  assert.equal(await page.getByText('Ruhende Beispiel GmbH',{exact:true}).count(),0,'Stale lead excluded from dashboard');
  await page.screenshot({path:output+'/dashboard.png',fullPage:true,animations:'disabled'});
@@ -80,10 +81,16 @@ try{
  await page.screenshot({path:output+'/settings.png',fullPage:true,animations:'disabled'});
  await page.getByRole('tab',{name:'KI & Quellen',exact:true}).click();
  await page.getByRole('button',{name:/Bevorzugter Suchzugang/}).click();
+ await page.getByRole('option',{name:'Zusätzliche Zugänge zuerst · falls aktiviert',exact:true}).click();
+ await page.getByRole('button',{name:/Bevorzugter Suchzugang/}).click();
  await page.getByRole('option',{name:'Direkte KI-Websuche · OpenAI / Claude',exact:true}).click();
  await page.getByRole('button',{name:'Einstellungen speichern'}).click();
  await page.getByText('Alle Einstellungen wurden gespeichert.').waitFor();
  assert.equal(config.searchBackend,'native');assert.equal(config.nativeWebSearch,true);
+ await page.getByRole('button',{name:'Firecrawl-Schlüssel löschen',exact:true}).click();
+ await page.getByText('Der Firecrawl-Schlüssel wird beim Speichern endgültig entfernt.').waitFor();
+ await page.getByRole('button',{name:'Einstellungen speichern'}).click();
+ await page.getByText('Alle Einstellungen wurden gespeichert.').waitFor();assert.equal(config.firecrawlKeySet,false);assert.equal(config.firecrawlEnabled,false);
  await page.getByRole('button',{name:'Quelle hinzufügen',exact:true}).click();
  await page.getByRole('textbox',{name:'Quellenname',exact:true}).fill('Öffentliche Karriereseite');
  await page.getByRole('textbox',{name:'URL',exact:true}).fill('https://example.org/karriere');
@@ -115,9 +122,29 @@ try{
  await page.getByRole('heading',{name:'Firma endgültig löschen?'}).waitFor();
  await page.getByRole('button',{name:'Abbrechen',exact:true}).click();assert.equal(deletes,0,'Cancel must not delete anything');
  await page.getByRole('button',{name:'Firma löschen',exact:true}).click();
- assert.equal(await page.getByRole('checkbox',{name:'Nicht erneut automatisch erfassen'}).isChecked(),true);
+ assert.equal(await page.getByRole('checkbox',{name:'Nicht erneut automatisch erfassen'}).count(),0);
  await page.getByRole('button',{name:'Endgültig löschen',exact:true}).click();
  await page.getByRole('button',{name:'Dossier öffnen: Beispielfirma Industrie GmbH'}).waitFor({state:'detached'});assert.equal(deletes,1);
+ await page.getByRole('button',{name:'Navigation öffnen'}).click();
+ await page.getByRole('navigation',{name:'Hauptnavigation'}).getByRole('button',{name:/Alle Firmen/}).click();
+ await page.getByRole('checkbox',{name:'Beispiel Logistik GmbH auswählen',exact:true}).check();
+ assert.equal(await page.getByRole('dialog').count(),0,'Selecting a mobile card does not open its dossier');
+ await page.setViewportSize({width:1440,height:900});
+ assert.equal(await page.getByRole('checkbox',{name:'Beispiel Logistik GmbH auswählen',exact:true}).isChecked(),true,'Selection survives viewport change');
+ await page.getByRole('checkbox',{name:'Ruhende Beispiel GmbH auswählen',exact:true}).check();
+ assert.equal(await page.getByRole('checkbox',{name:'Alle gefilterten Firmen auswählen'}).isChecked(),true);
+ await page.getByRole('checkbox',{name:'Alle gefilterten Firmen auswählen'}).uncheck();
+ assert.equal(await page.getByRole('checkbox',{name:'Beispiel Logistik GmbH auswählen',exact:true}).isChecked(),false);
+ await page.getByRole('checkbox',{name:'Alle gefilterten Firmen auswählen'}).check();
+ await page.getByRole('button',{name:'Auswahl löschen (2)',exact:true}).click();
+ await page.getByRole('heading',{name:'2 Firmen endgültig löschen?'}).waitFor();
+ await page.setViewportSize({width:320,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Bulk deletion dialog fits a 320px mobile screen');
+ await page.setViewportSize({width:1440,height:900});
+ await page.getByRole('button',{name:'Abbrechen',exact:true}).click();assert.equal(deletes,1);
+ await page.getByRole('button',{name:'Auswahl löschen (2)',exact:true}).click();
+ await page.getByRole('button',{name:'Endgültig löschen',exact:true}).click();
+ await page.getByRole('checkbox',{name:'Beispiel Logistik GmbH auswählen',exact:true}).waitFor({state:'detached'});
+ assert.equal(deletes,2);assert.equal(items.length,0,'Bulk deletion refreshes the list');
  await page.evaluate(()=>localStorage.setItem('quovadis-theme','dark'));await page.reload();await page.getByRole('heading',{name:'Dein Opportunity Radar'}).waitFor();
  assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(0, 0, 0)','Dark mode is black');
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'No overflow at '+width)}
@@ -134,5 +161,5 @@ try{
  await login.getByText('Benutzername oder Passwort stimmt nicht.').waitFor();
  await login.setViewportSize({width:390,height:844});
  assert.ok(await login.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Mobile login must not overflow');
- console.log('PASS: dashboard, stale lead reactivation, dossier sources/contacts, settings save and HTTP-compatible source creation, assistant, mobile layout, login errors');
+ console.log('PASS: dashboard, stale lead reactivation, dossier sources/contacts, settings save and HTTP-compatible source creation, assistant, responsive bulk selection/deletion, Firecrawl key removal, favicons, black dark mode and login errors');
 }finally{await browser.close()}

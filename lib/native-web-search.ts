@@ -6,6 +6,8 @@ export type NativeSearchSettings={
  openaiKey?:string;
  anthropicKey?:string;
  nativeWebSearch?:boolean;
+ firecrawlEnabled?:boolean;
+ localWebSearch?:boolean;
  searchBackend?:'auto'|'native';
  reasoningLevel?:'default'|'low'|'medium'|'high';
  onUsage?:(usage:Record<string,unknown>|undefined,succeeded:boolean,durationMs:number)=>Promise<void>;

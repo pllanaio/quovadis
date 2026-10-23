@@ -1,5 +1,7 @@
 # Business Trigger Engine – Implementierungsplan
 
+> Nachtrag: Die unten dokumentierte ursprüngliche Ausschlussfunktion wurde auf Nutzerwunsch entfernt. Löschungen sperren keine späteren Suchtreffer. Die aktuelle Bedienung mit Mehrfachauswahl ist in der README beschrieben.
+
 Basis: bestehende Next.js-App, Firmen in `opportunities`, belegte Signale und Historie, separater Research-Worker, HeroUI.
 
 1. Migrationssichere Ereignis-/Hypothesen-, Cache-, Nutzungs- und Ausschlussdaten ergänzen. Firmen bleiben unter ihren bisherigen IDs erhalten.

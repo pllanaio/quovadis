@@ -90,9 +90,8 @@ export async function init() {
       researched_at TIMESTAMPTZ NOT NULL, UNIQUE(event_id,revision_hash)
     );
     CREATE INDEX IF NOT EXISTS company_events_company ON company_events(company_id,last_seen_at DESC);
-    CREATE TABLE IF NOT EXISTS excluded_companies (
-      company_key TEXT PRIMARY KEY, website_host TEXT, excluded_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
+    -- Deleting a company no longer excludes it from future discoveries.
+    DROP TABLE IF EXISTS excluded_companies;
     CREATE TABLE IF NOT EXISTS research_page_analysis (
       cache_key TEXT PRIMARY KEY, source_url TEXT NOT NULL, content_hash TEXT NOT NULL,
       analysis JSONB NOT NULL, model_version TEXT NOT NULL, analyzed_at TIMESTAMPTZ NOT NULL DEFAULT now(),

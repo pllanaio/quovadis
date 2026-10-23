@@ -110,7 +110,7 @@ export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8
   return null;
  }
  if(options.ai?.searchBackend==='native'){const primary=await attemptNative();if(primary)return primary}
- if(firecrawlKey){
+ if(firecrawlKey&&options.ai?.firecrawlEnabled!==false){
   const prior=firecrawlBackoff.get(firecrawlKey);
   if(prior&&prior.until>Date.now())report({...prior.diagnostic,retryAfterSeconds:Math.ceil((prior.until-Date.now())/1000)});
   else try{
@@ -122,7 +122,7 @@ export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8
   }
  }
  let partial:{hits:SearchHit[];diagnostic:SearchDiagnostic}|undefined;
- try{
+ if(options.ai?.localWebSearch!==false)try{
   partial=await localSearch(cleanQuery,count,options.forceRetry);report(partial.diagnostic);
   if(partial.hits.length||partial.diagnostic.status==='empty')return {hits:partial.hits,backend:'searxng',diagnostics};
  }catch(error){report(error instanceof LocalSearchFailure?error.diagnostic:{backend:'searxng',status:'unavailable',message:'Die integrierte Websuche ist nicht erreichbar.'})}

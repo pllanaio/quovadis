@@ -78,11 +78,11 @@ Ein Treffer braucht eine benannte Firma, einen Standort im eingestellten Gebiet,
 
 ### Websuche ohne Firecrawl
 
-Der mitgelieferte SearXNG-Dienst sucht im öffentlichen Web; QuoVadis lädt gefundene Originalseiten selbst. Ein Firecrawl-Key kann diese Suche und Seitenabrufe ergänzen. Ohne Key oder bei einem Firecrawl-Fehler wird die integrierte Suche beziehungsweise der direkte Seitenabruf verwendet.
+Standardmäßig nutzt der Agent die KI-interne Websuche von OpenAI oder Claude mit deinem gespeicherten API-Key. Firecrawl und die lokale SearXNG-Suche sind zunächst ausgeschaltet und lassen sich unter **Einstellungen → KI & Quellen** einzeln zuschalten. Originalseiten werden weiterhin direkt geladen; dafür ist kein Firecrawl-Key nötig. Ausgeschaltete Suchdienste werden auch bei Fehlern nicht als Fallback verwendet.
 
 SearXNG nutzt eine explizite Gruppe aktivierter Websuchmaschinen. Metasuchanfragen laufen nacheinander mit Abstand, um die Anbieter nicht durch parallele Anfragen zu überlasten. **Keine Treffer**, **einzelne ausgefallene Engines** (etwa CAPTCHA) und **vollständiger Ausfall** werden getrennt behandelt. Ein Teilausfall ist kein Beweis, dass alle Suchmaschinen ausgefallen sind. Bei einem vollständigen Ausfall pausiert der Zugriff kurzzeitig; ein manueller Verbindungstest kann sofort erneut prüfen.
 
-**Bevorzugter Suchzugang** unter **Einstellungen → KI & Quellen** bietet **Automatisch** und **Direkte KI-Websuche**. Direkt startet die Suche beim gespeicherten OpenAI-/Claude-Anbieter; Firecrawl und SearXNG werden erst bei Fehlern versucht. So kann die Recherche bei gesperrten öffentlichen Suchmaschinen direkt mit dem vorhandenen KI-Zugang laufen. Die Auswahl wird gespeichert.
+**Bevorzugter Suchzugang** bestimmt die Reihenfolge der aktivierten Dienste. Standard ist **Direkte KI-Websuche**. Firecrawl und SearXNG werden nur nach ausdrücklicher Aktivierung verwendet. **Firecrawl-Schlüssel löschen** entfernt den gespeicherten Schlüssel beim nächsten Speichern und schaltet Firecrawl aus. Ein bloß leer gelassenes Passwortfeld behält den vorhandenen Schlüssel bei.
 
 **KI-Websuche als Ersatz** ist im automatischen Modus unter **Einstellungen → KI & Quellen** abschaltbar. Bei ausgefallener integrierter Suche oder eingeschränkter Suche ohne Treffer nutzt QuoVadis den vorhandenen API-Key und das konfigurierte Modell: OpenAI über Responses mit `web_search`, Claude über das serverseitige Websuchwerkzeug. Es wird kein anderer Modellname automatisch gewählt. Das Modell und der API-Zugang müssen Websuche unterstützen; zusätzliche Such- und Tokengebühren des Anbieters können anfallen. Die KI-Suche übernimmt Quellen aus Suchwerkzeug-Ergebnissen beziehungsweise aus den strukturierten URL-Zitaten der API nach einer abgeschlossenen Suche. Fehlt beides, wird die Anfrage einmal wiederholt. Ein weiterhin unvollständiges Antwortformat sperrt den Anbieter nicht für weitere Suchanfragen. Modelltext wird nicht als Fundstelle übernommen; die Originalseiten werden danach weiterhin separat gelesen und belegt.
 
@@ -174,7 +174,7 @@ Unter **Einstellungen → KI & Quellen** können optional Vorfilter- und Analyse
 
 ### Firmen löschen
 
-Im **Firmendossier → Überblick → Firma löschen** wird nach Bestätigung die Firma einschließlich Notizen, Kontaktverlauf, Signalen, Ereignissen, Analysehistorie und zugehörigem Seitenanalysecache entfernt. Standardmäßig bleibt ein minimaler Ausschlusseintrag (Firmenkennung und gegebenenfalls Website), damit der nächste Suchlauf sie nicht wieder anlegt. Diese Option kann vor dem Löschen abgewählt werden. Unter **Einstellungen → Recherche → Ausgeschlossene Firmen → Wieder zulassen** lässt sich der Ausschluss aufheben. Die Löschung ist endgültig; ein Ausschluss ersetzt keine Sicherung.
+Unter **Alle Firmen** kannst du Firmen per Checkbox auswählen (auch über mehrere Seiten), alle gefilterten Firmen markieren und **Auswahl löschen** verwenden. Nach der Bestätigung werden ausschließlich die ausgewählten Firmen samt Notizen, Kontaktverlauf, Signalen, Ereignissen, Analysehistorie und zugehörigem Seitenanalysecache entfernt. Dieselbe Löschung bleibt im Dossier verfügbar. Es gibt keinen Ausschluss von künftigen Suchen: neue Fundstellen können dieselbe Firma erneut anlegen. Frühere Ausschlüsse werden beim Update entfernt. Die Löschung ist endgültig.
 
 ### Prüfungen
 
@@ -187,3 +187,7 @@ UI_TEST_URL=http://127.0.0.1:3000 node tests/ui-smoke.mjs
 ```
 
 `scripts/business-db-integration.mjs` prüft Migration und Löschung mit echtem PostgreSQL. Es akzeptiert ausschließlich eine eigens angelegte, leere Datenbank namens `quovadis_business_test` über `DATABASE_URL`; diese danach entfernen. Ein echter kostenpflichtiger Recherchelauf benötigt die eigenen gespeicherten API-Zugänge.
+
+## App-Icons
+
+Das Radar aus dem vorhandenen Logo wird für SVG-Favicon, ICO (16/32/48 px), PNG-Favicons, Apple-Touch-Icon (180 px) und Manifest-Icons (192/512 px, auch maskierbar) verwendet. Die Assets werden ausgeliefert; `node scripts/generate-icons.mjs` erzeugt sie bei Bedarf aus `public/favicon.svg` erneut.

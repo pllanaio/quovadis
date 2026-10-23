@@ -17,7 +17,7 @@ export async function POST(req:Request){
  try{
   const settings=mode==='configured'?await getSettings():null;
   const result=await searchWebDetailed(settings?.firecrawlKey||'','München IT Administrator',6,settings?{ai:settings,forceRetry:true}:{forceRetry:true});
-  const checks=await Promise.allSettled(result.hits.slice(0,5).map(hit=>scrapePage(settings?.firecrawlKey||'',hit.url)));
+  const checks=await Promise.allSettled(result.hits.slice(0,5).map(hit=>scrapePage(settings?.firecrawlEnabled?settings.firecrawlKey:'',hit.url)));
   const pages=checks.flatMap(item=>item.status==='fulfilled'&&item.value?[item.value]:[]);
   const restricted=result.diagnostics.some(item=>item.status==='degraded'||item.status==='unavailable');
   const status=restricted||result.hits.length>0&&!pages.length?'degraded':result.hits.length?'ok':'empty';

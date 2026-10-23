@@ -1,6 +1,8 @@
 import {testLoader} from './ts-test-loader.mjs';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import ts from 'typescript';
 import {validTime,validTimezone} from '../lib/schedule.mjs';
@@ -17,8 +19,9 @@ const settings=load('../lib/settings.ts',{
  './discovery-prompt':{DEFAULT_DISCOVERY_PROMPT:'Find verified IT opportunities with original evidence sources.'},
  './schedule.mjs':{validTime,validTimezone},
 });
+assert.equal((await settings.getSettings()).searchBackend,'native');assert.equal((await settings.getSettings()).firecrawlEnabled,false);assert.equal((await settings.getSettings()).localWebSearch,false);
 assert.equal((await settings.getSettings()).nativeWebSearch,true,'old settings enable native search by default');
-let saved=await settings.saveSettings({...await settings.getSettings(),nativeWebSearch:false});assert.equal(saved.nativeWebSearch,false);assert.equal(stored.nativeWebSearch,false);
+let saved=await settings.saveSettings({...await settings.getSettings(),nativeWebSearch:false,searchBackend:'auto'});assert.equal(saved.nativeWebSearch,false);assert.equal(stored.nativeWebSearch,false);
 const oldClient={...await settings.getSettings()};delete oldClient.nativeWebSearch;saved=await settings.saveSettings(oldClient);assert.equal(saved.nativeWebSearch,false,'an older client preserves the saved preference');
 await assert.rejects(()=>settings.saveSettings({...oldClient,nativeWebSearch:'false'}),/Wahrheitswert/);
 await assert.rejects(()=>settings.saveSettings({...oldClient,nativeWebSearch:null}),/Wahrheitswert/);
@@ -48,4 +51,14 @@ result={hits:[],backend:'searxng',diagnostics:[{backend:'searxng',status:'empty'
 failure=new WebSearchUnavailableError('Suchanbieter sind derzeit nicht verfügbar.',[{backend:'searxng',status:'unavailable',message:'Verbindung fehlgeschlagen'}]);response=await route.POST(request());body=await response.json();assert.equal(response.status,502);assert.equal(body.status,'unavailable');assert.equal(body.error.startsWith('Error:'),false);assert.equal(body.diagnostics.length,1);
 failure=new WebSearchQueryError('Einzelne Anfrage ohne Quellen.',[{backend:'openai',status:'degraded',message:'Unvollständige Quellenliste'}]);body=await(await route.POST(request({mode:'configured'}))).json();assert.equal(body.status,'degraded');assert.equal(body.backend,'openai');
 assert.equal((await route.POST(request({mode:'unknown'}))).status,400);
+const keyDirectory=mkdtempSync(join(tmpdir(),'quovadis-key-delete-'));process.env.SETTINGS_KEY_FILE=join(keyDirectory,'settings.key');
+try{
+ let s=await settings.getSettings();
+ await settings.saveSettings({...s,firecrawlKey:'test-fixture-key-only',firecrawlEnabled:true});
+ assert.equal((await settings.getSettings()).firecrawlKey,'test-fixture-key-only');assert.notEqual(stored.firecrawlKey,'test-fixture-key-only');
+ await settings.saveSettings({...await settings.getSettings(),firecrawlKey:'',clearFirecrawlKey:true});
+ assert.equal(stored.firecrawlKey,'');assert.equal((await settings.getSettings()).firecrawlKey,'');assert.equal((await settings.getSettings()).firecrawlEnabled,false);
+ await settings.saveSettings({...await settings.getSettings(),clearFirecrawlKey:false,localWebSearch:true});assert.equal((await settings.getSettings()).localWebSearch,true);
+ const last=await settings.getSettings();await assert.rejects(()=>settings.saveSettings({...last,clearFirecrawlKey:'true'}),/Wahrheitswerte/);
+}finally{rmSync(keyDirectory,{recursive:true,force:true});delete process.env.SETTINGS_KEY_FILE}
 console.log('Settings/search API: default, opt-out persistence, boolean validation, local/configured isolation and honest diagnostics passed');

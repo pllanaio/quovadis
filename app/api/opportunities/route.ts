@@ -53,26 +53,29 @@ export async function GET(req: Request) {
   }
 }
 
-export async function DELETE(req:Request){
- const denied=await guard(req);if(denied)return denied;
- const input=await req.json().catch(()=>null),id=input?.id;
- if(!Number.isSafeInteger(id)||id<1||typeof input?.blockRediscovery!=='boolean')return NextResponse.json({error:'Ungültiger Löschauftrag.'},{status:400});
- await init();const client=await db().connect();
- try{
+export async function DELETE(req: Request) {
+ const denied = await guard(req); if (denied) return denied;
+ const input = await req.json().catch(() => null);
+ const requested = input?.ids ?? (input?.id === undefined ? null : [input.id]);
+ if (!Array.isArray(requested) || !requested.length || requested.length > 500 || requested.some(id => !Number.isSafeInteger(id) || id < 1)) {
+  return NextResponse.json({error: 'Bitte wähle 1 bis 500 Firmen zum Löschen aus.'}, {status: 400});
+ }
+ const ids = [...new Set<number>(requested)].sort((a,b) => a-b);
+ await init(); const client = await db().connect();
+ try {
   await client.query('BEGIN');
-  // Discovery takes the same company lock. The exclusion prevents an in-flight
-  // analysis from recreating the company immediately after deletion.
-  const snapshot=await client.query('SELECT name,city,company_key,company_url FROM opportunities WHERE id=$1',[id]);
-  const company=snapshot.rows[0];if(!company){await client.query('ROLLBACK');return NextResponse.json({error:'Firma nicht gefunden.'},{status:404})}
-  const key=company.company_key||companyIdentity(company.name,company.city);
-  await client.query('SELECT pg_advisory_xact_lock($1,hashtext($2))',[4747303,key.split('|')[0]]);
-  const locked=await client.query('SELECT id FROM opportunities WHERE id=$1 FOR UPDATE',[id]);
-  if(!locked.rowCount){await client.query('ROLLBACK');return NextResponse.json({error:'Firma nicht gefunden.'},{status:404})}
-  let host=null;try{host=new URL(company.company_url).hostname.replace(/^www\./,'')}catch{}
-  if(input.blockRediscovery)await client.query('INSERT INTO excluded_companies(company_key,website_host) VALUES($1,$2) ON CONFLICT(company_key) DO UPDATE SET website_host=EXCLUDED.website_host,excluded_at=now()',[key,host]);
-  await client.query('DELETE FROM research_page_analysis WHERE source_url IN (SELECT source_url FROM opportunity_signals WHERE opportunity_id=$1 UNION SELECT source_url FROM company_events WHERE company_id=$1 UNION SELECT source_url FROM opportunities WHERE id=$1)',[id]);
-  await client.query('DELETE FROM activities WHERE opportunity_id=$1',[id]);
-  await client.query('DELETE FROM opportunities WHERE id=$1',[id]);
-  await client.query('COMMIT');return NextResponse.json({ok:true,blocked:input.blockRediscovery});
- }catch{await client.query('ROLLBACK');return NextResponse.json({error:'Die Firma konnte nicht gelöscht werden.'},{status:503})}finally{client.release()}
+  const snapshot = await client.query('SELECT id,name,city,company_key FROM opportunities WHERE id=ANY($1::bigint[]) ORDER BY id', [ids]);
+  if (!snapshot.rowCount) { await client.query('ROLLBACK'); return NextResponse.json({error: 'Die ausgewählten Firmen wurden nicht gefunden.'}, {status: 404}); }
+  const keys = [...new Set<string>(snapshot.rows.map(company => (company.company_key || companyIdentity(company.name,company.city)).split('|')[0]))].sort();
+  for (const key of keys) await client.query('SELECT pg_advisory_xact_lock($1,hashtext($2))', [4747303,key]);
+  await client.query('SELECT id FROM opportunities WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE', [ids]);
+  await client.query('DELETE FROM research_page_analysis WHERE source_url IN (SELECT source_url FROM opportunity_signals WHERE opportunity_id=ANY($1::bigint[]) UNION SELECT source_url FROM company_events WHERE company_id=ANY($1::bigint[]) UNION SELECT source_url FROM opportunities WHERE id=ANY($1::bigint[]))', [ids]);
+  await client.query('DELETE FROM activities WHERE opportunity_id=ANY($1::bigint[])', [ids]);
+  const deleted = await client.query('DELETE FROM opportunities WHERE id=ANY($1::bigint[]) RETURNING id', [ids]);
+  await client.query('COMMIT');
+  return NextResponse.json({ok: true, deleted: deleted.rowCount});
+ } catch {
+  await client.query('ROLLBACK');
+  return NextResponse.json({error: 'Die Firmen konnten nicht gelöscht werden.'}, {status: 503});
+ } finally { client.release(); }
 }

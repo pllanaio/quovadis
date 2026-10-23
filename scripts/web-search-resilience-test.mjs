@@ -58,5 +58,9 @@ try{
  globalThis.fetch=async(input,init)=>{const url=new URL(String(input));if(url.pathname==='/search'&&url.searchParams.get('q')==='Erste Anfrage blockieren'){started();await gate;return Response.json({results:[],unresponsive_engines:engines.map(name=>[name,'CAPTCHA'])})}return regularFetch(input,init)};
  const blocked=assert.rejects(()=>searchWebDetailed('','Erste Anfrage blockieren',8,{forceRetry:true}),WebSearchUnavailableError);await startedPromise;
  const manual=searchWebDetailed('','Manueller erneuter Test',8,{forceRetry:true});mode='hits';release();await blocked;assert.equal((await manual).hits.length,1,'queued manual retry resets backoff after an older in-flight search fails');
+ mode='native-quota';const optInCalls=localCalls;const strict={...ai,searchBackend:'native',firecrawlEnabled:false,localWebSearch:false};
+ await assert.rejects(()=>searchWebDetailed('must-not-be-used','München IT Aufbau',8,{forceRetry:true,ai:strict}),error=>error.diagnostics.every(d=>d.backend==='openai'));
+ assert.equal(localCalls,optInCalls,'Disabled local search never receives a request, even if native search fails');
+ mode='hits';result=await searchWebDetailed('must-not-be-used','München IT Aufbau',8,{forceRetry:true,ai:strict});assert.equal(result.backend,'openai');assert.equal(result.diagnostics.length,1);
  console.log('PASS: partial/empty/full failures, explicit engines, safe results, sequential requests, cooldown/manual recovery, native fallback, opt-out, quota, HTTP/JSON and Firecrawl diagnostics');
 }finally{globalThis.fetch=originalFetch;rmSync(scratch,{recursive:true,force:true})}

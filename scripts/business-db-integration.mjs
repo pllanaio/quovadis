@@ -7,7 +7,8 @@ const load=testLoader();const schema=load('lib/db.ts');
 try{
  // Model an existing installation before the additive migration.
  await database.query("CREATE TABLE opportunities(id BIGSERIAL PRIMARY KEY,name TEXT NOT NULL,city TEXT NOT NULL,signal TEXT NOT NULL,summary TEXT DEFAULT '',source_url TEXT NOT NULL,score INTEGER DEFAULT 0,phone TEXT,email TEXT,created_at TIMESTAMPTZ DEFAULT now()); INSERT INTO opportunities(name,city,signal,source_url) VALUES('Legacy Test GmbH','München','Historischer Beleg','https://legacy.example.org')");
- await schema.init();const repeat=testLoader()('lib/db.ts');await repeat.init();await repeat.db().end();
+ await database.query("CREATE TABLE excluded_companies(company_key TEXT PRIMARY KEY,website_host TEXT,excluded_at TIMESTAMPTZ DEFAULT now()); INSERT INTO excluded_companies(company_key) VALUES('old exclusion')");
+ await schema.init();assert.equal((await database.query("SELECT to_regclass('excluded_companies') AS relation")).rows[0].relation,null,'Existing exclusions removed during upgrade');const repeat=testLoader()('lib/db.ts');await repeat.init();await repeat.db().end();
  const legacy=await database.query('SELECT * FROM opportunities WHERE id=1');assert.equal(legacy.rows[0].name,'Legacy Test GmbH');assert.equal(legacy.rows[0].external_engagement,'unknown');
  const engine=testLoader({'./db':schema})('lib/research.ts'),business=load('lib/business-triggers.ts');
  const settings={model:'test',serviceOffer:'IT-Konzeption und ERP',hourlyRate:100};
@@ -23,9 +24,9 @@ try{
  saved=await database.query('SELECT * FROM opportunities WHERE id=$1',[triggerId]);assert.ok(saved.rows[0].entry_opportunity_score<originalScore);assert.equal(saved.rows[0].external_engagement,'unknown');
  assert.equal((await database.query("SELECT count(*)::int AS n FROM company_events WHERE company_id=$1 AND verification_status='changed'",[triggerId])).rows[0].n,1,'Replaced evidence preserved but no longer ranks as an open project');
  const triggerRoute=testLoader({'@/lib/auth':{guard:async()=>null},'@/lib/db':schema})('app/api/opportunities/route.ts');
- assert.equal((await triggerRoute.DELETE(new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({id:triggerId,blockRediscovery:true})}))).status,200);
- assert.equal(await engine.saveSignal(lead,page,settings),false,'Excluded company cannot be recreated by discovery');
- await database.query("DELETE FROM excluded_companies WHERE company_key LIKE 'trigger test%'");
+ assert.equal((await triggerRoute.DELETE(new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({ids:[triggerId]})}))).status,200);
+ assert.equal(await engine.saveSignal(lead,page,settings),true,'Deleted companies may be discovered again');
+ const rediscovered=await database.query("SELECT id FROM opportunities WHERE name='Trigger Test GmbH'");assert.equal((await triggerRoute.DELETE(new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({ids:[Number(rediscovered.rows[0].id)]})}))).status,200);
  const row=await database.query("INSERT INTO opportunities(name,city,signal,source_url,company_url,company_key) VALUES('Delete Test GmbH','München','Standorteröffnung','https://delete.example.org/event','https://delete.example.org','delete test|muenchen') RETURNING id");const id=Number(row.rows[0].id);
  await database.query("INSERT INTO activities(opportunity_id,kind,note) VALUES($1,'note','Nur Testdaten')",[id]);
  const signal=await database.query("INSERT INTO opportunity_signals(opportunity_id,source_url,evidence_quote,signal,category,priority,source_reliability) VALUES($1,'https://delete.example.org/event','Standort eröffnet','Standorteröffnung','business','C','first_party') RETURNING id",[id]);
@@ -35,12 +36,10 @@ try{
  await database.query("INSERT INTO event_analysis_history(event_id,revision_hash,intelligence,model_version,researched_at) VALUES($1,'fixture','{}','test',now())",[event.rows[0].id]);
  await database.query("INSERT INTO research_page_analysis(cache_key,source_url,content_hash,analysis,model_version) VALUES('fixture','https://delete.example.org/event','fixture','[]','test')");
  const mocked=testLoader({'@/lib/auth':{guard:async()=>null},'@/lib/db':{db:()=>database,init:schema.init}});
- const route=mocked('app/api/opportunities/route.ts'),request=new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({id,blockRediscovery:true})});
+ const other=await database.query("INSERT INTO opportunities(name,city,signal,source_url) VALUES('Other Delete Test','Augsburg','ERP-Einführung','https://other-delete.example.org') RETURNING id");
+ const route=mocked('app/api/opportunities/route.ts'),request=new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({ids:[id,Number(other.rows[0].id)]})});
  assert.equal((await route.DELETE(request)).status,200);
  for(const table of ['activities','opportunity_signals','opportunity_signal_events','company_events','event_opportunities','event_analysis_history','research_page_analysis'])assert.equal((await database.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n,0,table+' fully removed');
  assert.equal((await database.query('SELECT count(*)::int AS n FROM opportunities')).rows[0].n,1,'Unrelated legacy company retained');
- assert.equal((await database.query('SELECT website_host FROM excluded_companies')).rows[0].website_host,'delete.example.org');
- const exclusions=mocked('app/api/opportunities/exclusions/route.ts');assert.equal((await exclusions.DELETE(new Request('http://localhost/api/opportunities/exclusions',{method:'DELETE',body:JSON.stringify({companyKey:'delete test|muenchen'})}))).status,200);
- assert.equal((await database.query('SELECT count(*)::int AS n FROM excluded_companies')).rows[0].n,0);
- console.log('PostgreSQL integration: legacy migration preserved IDs/data, repeated migration safe, all deletion cascades/cache cleanup scoped, exclusion release passed');
+ console.log('PostgreSQL integration: legacy migration preserved IDs/data, repeated migration safe, all deletion cascades/cache cleanup scoped, bulk selection and future rediscovery passed');
 }finally{await database.end();await schema.db().end()}
