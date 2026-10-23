@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
+const timers=[],requests=[];let backlog=true;
+const source=readFileSync(new URL('./worker.mjs',import.meta.url),'utf8').replace(/^import .*;\n/gm,'');
+const subject=runInNewContext(source+'\n;({deepLoop,monitorLoop})',{process:{env:{}},Date,console:{log(){},error(){}},readFileSync:()=>'',writeFileSync(){},mkdirSync(){},randomBytes:()=>({toString:()=>''}),dirname:()=>'',setTimeout:(callback,delay)=>timers.push({callback,delay}),requestJson:async url=>{requests.push(url);return url.endsWith('/deep')?{researched:2,pending:backlog?2:0,ready:backlog?2:0}:{} }});
+assert.ok(timers.some(timer=>timer.callback===subject.monitorLoop&&timer.delay===20000),'Monitoring starts independently');
+timers.length=0;await subject.deepLoop();assert.equal(timers.at(-1).delay,250,'Ready backlog drains without a two-minute pause');assert.equal(requests.length,1);assert.ok(requests[0].endsWith('/deep'),'Deep queue does not wait for source monitoring');
+backlog=false;await subject.deepLoop();assert.equal(timers.at(-1).delay,30000,'Empty queues use a bounded polling interval');
+await subject.monitorLoop();assert.ok(requests.at(-1).endsWith('/monitor'));
+console.log('Worker queue: immediate backlog drain, independent monitoring and bounded idle polling passed');

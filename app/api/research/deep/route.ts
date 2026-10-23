@@ -11,6 +11,6 @@ export async function POST(req:Request){
   const body=await req.json().catch(()=>({}));
   const id=body?.id===undefined?undefined:Number(body.id);
   if(id!==undefined&&(!Number.isSafeInteger(id)||id<1))throw Error('Ungültige Opportunity-ID');
-  return NextResponse.json(await processDeepQueue(id));
+  return NextResponse.json(await processDeepQueue(id,body?.retryFailed===true));
  }catch(error){return NextResponse.json({error:String(error)},{status:400})}
 }

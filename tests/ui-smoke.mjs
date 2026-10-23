@@ -22,9 +22,9 @@ const items=[
 ];
 const intelligence=testLoader()('lib/business-triggers.ts').buildEventIntelligence(items[0].evidence_quote,'jobs',{hypotheses:['Eine ergänzende Unterstützung beim Aufbau könnte sinnvoll sein.'],offer:{title:'Microsoft-365-Bestandsaufnahme',description:'Begrenztes Einstiegsprojekt als Gesprächsangebot.',benefit:'Planungsgrundlage',scope:'Analyse und Maßnahmenplan',hoursMin:5,hoursMax:12,monthlyPotential:'high'}},{hourlyRate:100,serviceOffer:config.serviceOffer,model:config.model});
 Object.assign(items[0],{opportunity_category:intelligence.category,it_need_confidence:intelligence.itNeedConfidence,entry_opportunity_score:intelligence.entryOpportunityScore,event_intelligence:intelligence});
-let deletes=0;
+let deletes=0,deepResumes=0;
 const activities=[];
-function overview(){const active=items.filter(item=>!item.is_stale);return {demo:false,items,stats:{total:3,active:active.length,stale:3-active.length,highMatch:active.filter(item=>item.score>=80).length,researched:2,pending:1,contactable:1,newToday:0,averageScore:80},charts:{scoreBands:[{label:'Hohe Passung',color:'green',count:active.filter(item=>item.score>=80).length},{label:'Mittlere Passung',color:'amber',count:1},{label:'Geringe Passung',color:'red',count:0}],cities:[{city:'München',count:1},{city:'Augsburg',count:1}]},latestRun:{id:1,status:'completed',stage:'Recherche abgeschlossen',started_at:now,finished_at:now,searched:31,discovered:214,verified:60,imported:12,rejected:35},limit:500}}
+function overview(){const active=items.filter(item=>!item.is_stale);return {demo:false,items,stats:{total:items.length,active:active.length,stale:items.length-active.length,highMatch:active.filter(item=>item.score>=80).length,researched:items.filter(item=>item.research_status==='complete').length,pending:items.filter(item=>item.research_status!=='complete').length,deepRunning:0,deepWorkerLastSeen:now,contactable:1,newToday:0,averageScore:80},charts:{scoreBands:[{label:'Hohe Passung',color:'green',count:active.filter(item=>item.score>=80).length},{label:'Mittlere Passung',color:'amber',count:1},{label:'Geringe Passung',color:'red',count:0}],cities:[{city:'München',count:1},{city:'Augsburg',count:1}]},latestRun:{id:1,status:'completed',stage:'Recherche abgeschlossen',started_at:now,finished_at:now,searched:31,discovered:214,verified:60,imported:12,rejected:35},limit:500}}
 await page.route('**/api/**',async route=>{
  const req=route.request(),url=new URL(req.url()),path=url.pathname;
  let json={};
@@ -34,6 +34,7 @@ await page.route('**/api/**',async route=>{
  else if(path==='/api/opportunities/events')json={events:[{id:10,event_description:items[0]?.signal,evidence_quote:items[0]?.evidence_quote,source_url:'https://example.org/karriere',verification_status:'verified',published_at:null,checked_at:now,opportunities:[{id:11,hypothesis:intelligence.hypotheses[0].statement,intelligence}]}]};
  else if(path==='/api/opportunities/exclusions')json={items:[]};
  else if(path==='/api/research/usage')json={summary:{calls:2,input_tokens:1000,output_tokens:500,estimated_cost_usd:null,unpriced_calls:2}};
+ else if(path==='/api/research/deep'){assert.equal(req.postDataJSON().retryFailed,true);deepResumes++;for(const item of items)if(item.research_status!=='complete')item.research_status='complete';json={researched:1,pending:0,ready:0,errors:[]}}
  else if(path==='/api/research')json=req.method()==='POST'?{queued:true,run:{id:2,status:'queued'}}:{runs:[overview().latestRun]};
  else if(path==='/api/activities'){if(req.method()==='POST'){const entry=req.postDataJSON();activities.push({...entry,id:1,created_at:now});const lead=items.find(item=>String(item.id)===String(entry.id));if(entry.note.trim()){lead.is_stale=false;lead.chart_eligible=true;lead.stale_at=daysAgo(-10)}json={ok:true,refreshesRanking:!!entry.note.trim()}}else json={items:activities}}
  else if(path==='/api/opportunities/signals')json={signals:[{id:1,source_url:'https://example.org/karriere',evidence_quote:items[0].evidence_quote,signal:items[0].signal,category:'jobs',priority:'A',source_reliability:'first_party',published_at:null,last_checked_at:now,status:'active'}],events:[]};
@@ -45,6 +46,8 @@ try{
  await page.getByRole('heading',{name:'Dein Opportunity Radar'}).waitFor();
  assert.equal(await page.locator('link[rel="apple-touch-icon"]').count(),1);assert.equal((await page.request.get(baseURL+'/manifest.webmanifest')).status(),200);assert.equal((await page.request.get(baseURL+'/favicon.ico')).status(),200);
  await page.getByRole('button',{name:'Dossier öffnen: Beispielfirma Industrie GmbH'}).waitFor();
+ await page.getByRole('button',{name:'Vertiefungen fortsetzen',exact:true}).click();
+ await page.getByRole('button',{name:'Vertiefungen fortsetzen',exact:true}).waitFor({state:'detached'});assert.equal(deepResumes,1);
  assert.equal(await page.getByText('Ruhende Beispiel GmbH',{exact:true}).count(),0,'Stale lead excluded from dashboard');
  await page.screenshot({path:output+'/dashboard.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:/Opportunity-Art/}).click();

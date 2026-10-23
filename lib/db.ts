@@ -32,6 +32,13 @@ export async function init() {
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS research_error TEXT;
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ;
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS researched_at TIMESTAMPTZ;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS research_started_at TIMESTAMPTZ;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS research_updated_at TIMESTAMPTZ;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS research_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS research_next_attempt_at TIMESTAMPTZ;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS research_stage TEXT;
+    UPDATE opportunities SET research_status='pending' WHERE research_status='legacy' AND evidence_quote IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS worker_heartbeats (name TEXT PRIMARY KEY,last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now());
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS company_key TEXT;
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS need_status TEXT NOT NULL DEFAULT 'unclassified';
     ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS external_readiness TEXT NOT NULL DEFAULT 'unknown';

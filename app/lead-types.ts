@@ -10,7 +10,7 @@ export type Assessment={
  researchCoverage?:{searches:number;verifiedPages:number;financialDataFound:boolean;checkedAt:string;limitations:string[]};
 };
 export type ResearchLead={
- id:number;evidence_quote?:string|null;research_status?:string;research_summary?:string|null;
+ id:number;research_stage?:string|null;research_attempts?:number;research_next_attempt_at?:string|null;research_updated_at?:string|null;evidence_quote?:string|null;research_status?:string;research_summary?:string|null;
  research_sources?:Finding[];research_error?:string|null;contact_source_url?:string|null;
  detected_at?:string|null;researched_at?:string|null;last_checked_at?:string|null;
  need_status?:string;external_readiness?:string;assessment?:Assessment;
@@ -30,6 +30,6 @@ export function dateLabel(value?:string|null,withTime=false){
  return new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',...(withTime?{timeStyle:'short' as const}:{}),timeZone:'Europe/Berlin'}).format(date);
 }
 export function scoreColor(score:number):'success'|'warning'|'danger'{return score>=80?'success':score>=60?'warning':'danger'}
-export function researchLabel(status?:string){return status==='complete'?'Recherche abgeschlossen':status==='pending'?'Recherche ausstehend':status==='needs_source'?'Weitere Quellen gesucht':status==='failed'?'Recherche fehlgeschlagen':'Signal erfasst'}
+export function researchLabel(status?:string){return status==='complete'?'Recherche abgeschlossen':status==='researching'?'Dossier wird vertieft':status==='pending'?'Zur Vertiefung eingeplant':status==='needs_source'?'Weitere Quellen gesucht':status==='failed'?'Recherche fehlgeschlagen':'Signal erfasst'}
 export function sourceLabel(kind?:string){return kind==='first_party'?'Unternehmensquelle':kind==='public_portal'?'Öffentliches Portal':kind==='secondary'?'Drittquelle':'Öffentliche Webseite'}
 export function webHref(value?:string|null){try{const url=new URL(value||'');return ['https:','http:'].includes(url.protocol)?url.href:undefined}catch{return undefined}}

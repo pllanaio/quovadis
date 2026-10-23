@@ -7,7 +7,7 @@ import type {Lead} from './lead-types';
 import {CATEGORY_LABELS, type OpportunityCategory} from '../lib/business-triggers';
 import {dateLabel} from './dashboard-types';
 
-const statusLabel=(lead:Lead)=>lead.is_stale?'Zurückgestellt':lead.research_status==='complete'?'Vertieft':lead.research_status==='failed'?'Erneut prüfen':lead.research_status==='needs_source'?'Quelle fehlt':'In Recherche';
+const statusLabel=(lead:Lead)=>lead.is_stale?'Zurückgestellt':lead.research_status==='complete'?'Vertieft':lead.research_status==='researching'?'Wird vertieft':lead.research_status==='failed'?(lead.research_next_attempt_at?'Wiederholung geplant':'Vertiefung fehlgeschlagen'):lead.research_status==='needs_source'?'Quelle fehlt':'Zur Vertiefung';
 function Score({lead}:{lead:Lead}){return <Chip size="sm" color={lead.score>=80?'success':lead.score>=60?'warning':'danger'} variant="soft"><span className="inline-flex items-center gap-1.5 font-semibold"><span className="size-1.5 rounded-full bg-current"/>{lead.score}<span className="font-normal">/100</span></span></Chip>}
 function Status({lead}:{lead:Lead}){return <Chip size="sm" color={lead.is_stale?'default':lead.research_status==='complete'?'success':'accent'} variant="soft">{statusLabel(lead)}</Chip>}
 

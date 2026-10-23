@@ -54,14 +54,14 @@ async function searchEngines(){
  })().finally(()=>{engineLoading=undefined});
  return engineLoading;
 }
-async function performLocalSearch(query:string,limit:number):Promise<{hits:SearchHit[];diagnostic:SearchDiagnostic}>{
+async function performLocalSearch(query:string,limit:number,signal?:AbortSignal):Promise<{hits:SearchHit[];diagnostic:SearchDiagnostic}>{
  if(localBackoff&&localBackoff.until>Date.now())throw new LocalSearchFailure({...localBackoff.diagnostic,retryAfterSeconds:Math.ceil((localBackoff.until-Date.now())/1000)});
  try{
   const engines=await searchEngines();
   const delay=750-(Date.now()-lastLocalRequest);if(delay>0)await new Promise(resolve=>setTimeout(resolve,delay));lastLocalRequest=Date.now();
   const url=new URL('/search',SEARCH_SERVICE);url.searchParams.set('q',query);url.searchParams.set('format','json');url.searchParams.set('language','de-DE');url.searchParams.set('categories','general');url.searchParams.set('engines',engines.join(','));
   let response:Response;
-  try{response=await fetch(url,{signal:AbortSignal.timeout(25000),headers:{accept:'application/json'}})}catch(error){throw localFailure(error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'SearXNG hat innerhalb von 25 Sekunden nicht geantwortet.':'SearXNG ist beim Suchen nicht erreichbar. Containerstatus und Netzwerkverbindung prüfen.')}
+  try{response=await fetch(url,{signal:AbortSignal.any([AbortSignal.timeout(25000),...(signal?[signal]:[])]),headers:{accept:'application/json'}})}catch(error){throw localFailure(error instanceof Error&&['TimeoutError','AbortError'].includes(error.name)?'SearXNG hat innerhalb von 25 Sekunden nicht geantwortet.':'SearXNG ist beim Suchen nicht erreichbar. Containerstatus und Netzwerkverbindung prüfen.')}
   if(!response.ok)throw localFailure('SearXNG-Websuche meldet HTTP '+response.status+(response.status===403?'. JSON-Suchzugang und SearXNG-Konfiguration prüfen.':'.'));
   let data:{results?:Array<{url?:string;title?:string;content?:string}>;unresponsive_engines?:unknown};
   try{data=await response.json()}catch{throw localFailure('SearXNG-Websuche liefert kein gültiges JSON.')}
@@ -73,14 +73,21 @@ async function performLocalSearch(query:string,limit:number):Promise<{hits:Searc
   const status=issues.length?'degraded':hits.length?'ok':'empty';
   return {hits,diagnostic:{backend:'searxng',status,message:issues.length?'SearXNG ist teilweise verfügbar: '+issues.map(issue=>issue.name+' ('+issue.reason+')').join(', ')+'. Andere angefragte Suchmaschinen haben keinen Fehler gemeldet.':hits.length?'Integrierte Websuche hat Treffer geliefert.':'Integrierte Websuche hat korrekt geantwortet, aber keine Treffer für diese Anfrage gefunden.',engines:issues}};
  }catch(error){
+  signal?.throwIfAborted();
   const failure=error instanceof LocalSearchFailure?error:localFailure('SearXNG konnte die Suche nicht verarbeiten.');
   localBackoff={until:Date.now()+60000,diagnostic:failure.diagnostic};throw failure;
  }
 }
-function localSearch(query:string,limit:number,forceRetry=false){
- // One metasearch at a time: each request already fans out to several engines.
- const request=searchQueue.then(()=>{if(forceRetry){localBackoff=undefined;engineCache=undefined}return performLocalSearch(query,limit)});searchQueue=request.catch(()=>{});return request;
+function localSearch(query:string,limit:number,forceRetry=false,signal?:AbortSignal){
+ // Serialize metasearch without letting a cancelled dossier block its caller.
+ const request=searchQueue.then(()=>{signal?.throwIfAborted();if(forceRetry){localBackoff=undefined;engineCache=undefined}return performLocalSearch(query,limit,signal)});searchQueue=request.catch(()=>{});
+ if(!signal)return request;
+ return new Promise<Awaited<typeof request>>((resolve,reject)=>{
+  const abort=()=>reject(signal.reason);if(signal.aborted){abort();return}
+  signal.addEventListener('abort',abort,{once:true});request.then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
+ });
 }
+
 export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8,options:SearchOptions={}):Promise<SearchResult>{
  const diagnostics:SearchDiagnostic[]=[];
  const report=(diagnostic:SearchDiagnostic)=>{diagnostics.push(diagnostic);options.onDiagnostic?.(diagnostic)};
@@ -101,6 +108,7 @@ export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8
   else try{
    const hits=await nativeSearch(ai,cleanQuery,count);report({backend:ai.provider,status:hits.length?'ok':'empty',message:(ai.provider==='openai'?'OpenAI':'Claude')+(ai.searchBackend==='native'?'-Websuche wurde direkt verwendet':'-Websuche wurde als Ersatz verwendet')+(hits.length?'.':', hat aber keine Treffer geliefert.')});return {hits,backend:ai.provider,diagnostics};
   }catch(error){
+   ai.researchSignal?.throwIfAborted();
    const message=error instanceof Error?error.message:'Native KI-Websuche ist nicht verfügbar.';
    queryFailure=error instanceof NativeSearchError&&error.querySpecific;
    if(!queryFailure){if(nativeBackoff.size>20)nativeBackoff.clear();nativeBackoff.set(identity,{until:Date.now()+Math.max(120000,error instanceof NativeSearchError?error.retryAfterMs||0:0),message})}
@@ -114,8 +122,9 @@ export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8
   const prior=firecrawlBackoff.get(firecrawlKey);
   if(prior&&prior.until>Date.now())report({...prior.diagnostic,retryAfterSeconds:Math.ceil((prior.until-Date.now())/1000)});
   else try{
-   const hits=await firecrawlSearch(firecrawlKey,cleanQuery,count);report({backend:'firecrawl',status:hits.length?'ok':'empty',message:hits.length?'Firecrawl hat Suchtreffer geliefert.':'Firecrawl hat keine Treffer für diese Anfrage gefunden.'});if(hits.length)return {hits,backend:'firecrawl',diagnostics};successfulEmpty='firecrawl';
+   const hits=await firecrawlSearch(firecrawlKey,cleanQuery,count,options.ai?.researchSignal);report({backend:'firecrawl',status:hits.length?'ok':'empty',message:hits.length?'Firecrawl hat Suchtreffer geliefert.':'Firecrawl hat keine Treffer für diese Anfrage gefunden.'});if(hits.length)return {hits,backend:'firecrawl',diagnostics};successfulEmpty='firecrawl';
   }catch(error){
+   options.ai?.researchSignal?.throwIfAborted();
    const diagnostic:SearchDiagnostic={backend:'firecrawl',status:'unavailable',message:error instanceof FirecrawlError?error.message:'Firecrawl konnte die Suche nicht ausführen.'};
    const delay=error instanceof FirecrawlError?error.retryAfterMs??(error.code==='rate_limited'?30000:120000):120000;
    firecrawlBackoff.set(firecrawlKey,{until:Date.now()+delay,diagnostic});report(diagnostic);
@@ -123,9 +132,9 @@ export async function searchWebDetailed(firecrawlKey:string,query:string,limit=8
  }
  let partial:{hits:SearchHit[];diagnostic:SearchDiagnostic}|undefined;
  if(options.ai?.localWebSearch!==false)try{
-  partial=await localSearch(cleanQuery,count,options.forceRetry);report(partial.diagnostic);
+  partial=await localSearch(cleanQuery,count,options.forceRetry,options.ai?.researchSignal);report(partial.diagnostic);
   if(partial.hits.length||partial.diagnostic.status==='empty')return {hits:partial.hits,backend:'searxng',diagnostics};
- }catch(error){report(error instanceof LocalSearchFailure?error.diagnostic:{backend:'searxng',status:'unavailable',message:'Die integrierte Websuche ist nicht erreichbar.'})}
+ }catch(error){options.ai?.researchSignal?.throwIfAborted();report(error instanceof LocalSearchFailure?error.diagnostic:{backend:'searxng',status:'unavailable',message:'Die integrierte Websuche ist nicht erreichbar.'})}
  if(!nativeAttempted){const fallback=await attemptNative();if(fallback)return fallback}
  // A partial engine failure is not evidence that the remaining engines failed.
  if(partial)return {hits:partial.hits,backend:'searxng',diagnostics};
@@ -175,13 +184,45 @@ function decoratePage(page:VerifiedPage):VerifiedPage{
  const seen=new Set<string>(),seenContacts=new Set<string>();
  return {...page,links:links.filter(link=>{if(seen.has(link.url))return false;seen.add(link.url);return true}).slice(0,100),contacts:contacts.filter(item=>{const key=item.kind+':'+item.value.toLowerCase();if(seenContacts.has(key))return false;seenContacts.add(key);return true}).slice(0,35)};
 }
-async function localScrape(value:string):Promise<VerifiedPage|null>{
+export class SourceReadError extends Error {
+ constructor(readonly code:string,message:string){super(message)}
+}
+function sourceFailure(error:unknown):SourceReadError {
+ if(error instanceof SourceReadError)return error;
+ const item=error as {name?:string;code?:string;cause?:{code?:string}};
+ const code=item?.cause?.code||item?.code||'';
+ if(/CERT|TLS|SSL|SELF_SIGNED|UNABLE_TO_VERIFY/.test(code))return new SourceReadError('tls','TLS-Zertifikat der Originalseite konnte nicht geprüft werden.');
+ if(code==='ENOTFOUND')return new SourceReadError('dns','Domain der Originalseite wurde nicht gefunden (DNS).');
+ if(code==='EAI_AGAIN')return new SourceReadError('transient','DNS der Originalseite antwortet vorübergehend nicht.');
+ if(/TIMEOUT|ETIMEDOUT/.test(code)||['AbortError','TimeoutError'].includes(item?.name||''))return new SourceReadError('timeout','Originalseite hat nicht innerhalb des Zeitlimits geantwortet.');
+ if(code==='ECONNREFUSED')return new SourceReadError('network','Originalseite hat die Verbindung abgelehnt.');
+ return new SourceReadError('transient','Verbindung zur Originalseite ist fehlgeschlagen oder wurde unterbrochen.');
+}
+async function fetchOriginal(url:URL,signal?:AbortSignal):Promise<Response>{
+ for(let attempt=0;attempt<2;attempt++){
+  signal?.throwIfAborted();
+  // Revalidate every destination, including redirects and retries.
+  await safeDestination(url);
+  try{
+   const response=await fetch(url.href,{redirect:'manual',signal:AbortSignal.any([AbortSignal.timeout(20000),...(signal?[signal]:[])]),headers:{'user-agent':'QuoVadis Research/1.0 (+internal business research)','accept':'text/html,application/pdf,text/plain;q=0.9'}});
+   if(![429,502,503,504].includes(response.status)||attempt)return response;
+   const retryAfter=response.headers.get('retry-after');
+   if(retryAfter&&(!/^\d+$/.test(retryAfter)||Number(retryAfter)>2))return response;
+   await response.body?.cancel();await new Promise(resolve=>setTimeout(resolve,retryAfter?Number(retryAfter)*1000:300));
+  }catch(error){
+   const failure=sourceFailure(error);
+   if(attempt||!['transient','timeout'].includes(failure.code))throw failure;
+   await new Promise(resolve=>setTimeout(resolve,300));
+  }
+ }
+ throw new SourceReadError('network','Originalseite konnte nicht gelesen werden.');
+}
+async function localScrape(value:string,signal?:AbortSignal):Promise<VerifiedPage|null>{
  let url=publicWebUrl(value);if(!url)return null;
  for(let redirects=0;redirects<4;redirects++){
-  await safeDestination(url);
-  const response:Response=await fetch(url.href,{redirect:'manual',signal:AbortSignal.timeout(20000),headers:{'user-agent':'QuoVadis Research/1.0 (+internal business research)','accept':'text/html,application/pdf,text/plain;q=0.9'}});
+  const response=await fetchOriginal(url,signal);
   if(response.status>=300&&response.status<400){const location=response.headers.get('location');await response.body?.cancel();url=location?publicWebUrl(new URL(location,url).href):null;if(!url)return null;continue}
-  if(!response.ok)return null;
+  if(!response.ok){await response.body?.cancel();if([404,410].includes(response.status))return null;throw new SourceReadError('http_'+response.status,'Originalseite antwortet mit HTTP '+response.status+([401,403].includes(response.status)?' (Zugriff nicht öffentlich verfügbar).':response.status===429?' (zu viele Anfragen).':'.'))}
   const type=response.headers.get('content-type')||'';if(/application\/pdf/i.test(type))return pdfPage(response,url);if(!/text\/html|text\/plain/i.test(type)){await response.body?.cancel();return null}
   const raw=new TextDecoder().decode(await readLimited(response));if(raw.length<100)return null;
   if(type.includes('text/plain'))return decoratePage({url:url.href,title:'',text:raw.slice(0,60000),publishedAt:null,sourceReliability:reliability(url),checkedAt:new Date().toISOString()});
@@ -204,10 +245,10 @@ async function localScrape(value:string):Promise<VerifiedPage|null>{
  }
  return null;
 }
-export async function scrapePage(firecrawlKey:string,value:string):Promise<VerifiedPage|null>{
+export async function scrapePage(firecrawlKey:string,value:string,signal?:AbortSignal):Promise<VerifiedPage|null>{
  if(firecrawlKey&&(firecrawlScrapeBackoff.get(firecrawlKey)||0)<Date.now()){
-  try{const page=await firecrawlScrape(firecrawlKey,value);if(page)return decoratePage(page)}catch(error){if(error instanceof FirecrawlError&&error.code!=='source'&&error.code!=='invalid_response')firecrawlScrapeBackoff.set(firecrawlKey,Date.now()+(error.retryAfterMs??120000))}
+  try{const page=await firecrawlScrape(firecrawlKey,value,signal);if(page)return decoratePage(page)}catch(error){signal?.throwIfAborted();if(error instanceof FirecrawlError&&error.code!=='source'&&error.code!=='invalid_response')firecrawlScrapeBackoff.set(firecrawlKey,Date.now()+(error.retryAfterMs??120000))}
  }
- return localScrape(value);
+ try{return await localScrape(value,signal)}catch(error){if(error instanceof TypeError||error instanceof DOMException)throw sourceFailure(error);throw error}
 }
 export type {SearchHit,VerifiedPage,PageLink,PublicContact};

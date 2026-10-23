@@ -37,15 +37,22 @@ async function researchLoop(){
 }
 
 async function deepLoop(){
+ let nextDelay=15000;
  try{
   const result=await request('/api/research/deep','POST',undefined,15*60*1000);
   if(result.researched||result.errors?.length)console.log(new Date().toISOString(),'Deep Research:',result.researched,'abgeschlossen;',result.pending,'offen;',result.errors?.length||0,'Fehler');
+  nextDelay=result.ready>0?250:result.busy?15000:30000;
  }catch(error){console.error('Deep-Research-Fehler:',String(error))}
+ setTimeout(deepLoop,nextDelay);
+}
+
+// Source monitoring has its own loop; slow sites cannot stall the dossier queue.
+async function monitorLoop(){
  try{
   const monitor=await request('/api/research/monitor','POST',undefined,5*60*1000);
   if(monitor.errors?.length)console.error('Signal-Monitoring:',monitor.errors.join('; '));
  }catch(error){console.error('Monitoring-Fehler:',String(error))}
- setTimeout(deepLoop,120000);
+ setTimeout(monitorLoop,120000);
 }
 
 async function mailLoop(){
@@ -57,4 +64,5 @@ async function mailLoop(){
 setTimeout(scheduleLoop,5000);
 setTimeout(researchLoop,10000);
 setTimeout(deepLoop,15000);
+setTimeout(monitorLoop,20000);
 setTimeout(mailLoop,60000);

@@ -6,6 +6,7 @@ export type NativeSearchSettings={
  openaiKey?:string;
  anthropicKey?:string;
  nativeWebSearch?:boolean;
+ researchSignal?:AbortSignal;
  firecrawlEnabled?:boolean;
  localWebSearch?:boolean;
  searchBackend?:'auto'|'native';
@@ -72,8 +73,8 @@ function apiError(settings:NativeSearchSettings,response:Response,data:Record<st
 async function request(settings:NativeSearchSettings,url:string,headers:Record<string,string>,body:Record<string,unknown>){
  const started=Date.now();let response:Response;
  try{
-  response=await fetch(url,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});
- }catch(error){throw new NativeSearchError(settings,error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?'timeout':'network_error')}
+  response=await fetch(url,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.any([AbortSignal.timeout(55000),...(settings.researchSignal?[settings.researchSignal]:[])])});
+ }catch(error){settings.researchSignal?.throwIfAborted();throw new NativeSearchError(settings,error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?'timeout':'network_error')}
  let data:Record<string,unknown>|null;
  try{data=object(await response.json())}
  catch(error){

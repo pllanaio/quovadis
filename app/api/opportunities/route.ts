@@ -22,7 +22,10 @@ export async function GET(req: Request) {
           'stale', count(*) FILTER (WHERE NOT chart_eligible),
           'highMatch', count(*) FILTER (WHERE chart_eligible AND score >= 80),
           'researched', count(*) FILTER (WHERE research_status = 'complete'),
-          'pending', count(*) FILTER (WHERE research_status IN ('pending', 'needs_source', 'failed')),
+          'pending', count(*) FILTER (WHERE research_status IN ('pending', 'researching', 'needs_source', 'failed')),
+          'deepRunning', count(*) FILTER (WHERE research_status='researching'),
+          'deepFailed', count(*) FILTER (WHERE research_status IN ('failed','needs_source') AND research_attempts>=5),
+          'deepWorkerLastSeen', (SELECT last_seen_at FROM worker_heartbeats WHERE name='deep'),
           'contactable', count(*) FILTER (WHERE chart_eligible AND (NULLIF(email, '') IS NOT NULL OR NULLIF(phone, '') IS NOT NULL)),
           'newToday', count(*) FILTER (WHERE chart_eligible AND created_at >= date_trunc('day', now() AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin'),
           'averageScore', COALESCE(round(avg(score) FILTER (WHERE chart_eligible)), 0)

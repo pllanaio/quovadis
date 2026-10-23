@@ -37,6 +37,7 @@ async function scenario(search){
  }};
  const subject=compile('research',id=>{
   if(id.startsWith('node:'))return nativeRequire(id);
+  if(id==='./research-json')return modules('lib/research-json.ts');
   if(id==='./business-triggers')return business;
   if(id==='./research-model')return {logUsage:async()=>{},researchModel:async(_settings,system)=>{if(system.startsWith('Du planst')||system.startsWith('Du steuerst')){plans++;return JSON.stringify({queries:['Dachau IT Aufbau','München IT Administrator Aufbau']})}return '[]'}};
   if(id==='./research-queries')return queries;

@@ -92,7 +92,14 @@ Die Suche braucht Internetzugang vom Server und öffentlich erreichbare Suchmasc
 
 ## Firmendossier, Bewertung und Kontakt
 
-**Deep Research beginnt erst nach einem belegten Signal.** Die separate Warteschlange recherchiert Firmenwebsite, Impressum, Kontakt- und Teamseiten, öffentliche Social-Media-Profile, weitere Webquellen und aktivierte MCP-Quellen. Sie wird vom Worker nach jeder Verarbeitung mit einer Pause von etwa zwei Minuten weiter abgearbeitet.
+**Deep Research beginnt erst nach einem belegten Signal.** Die separate Warteschlange recherchiert Firmenwebsite, Impressum, Kontakt- und Teamseiten, öffentliche Social-Media-Profile, weitere Webquellen und aktivierte MCP-Quellen. Der Worker bearbeitet zwei Firmen parallel und setzt die nächste Gruppe sofort fort, solange weitere Einträge bereitstehen. Das Quellenmonitoring läuft unabhängig davon. Der Browser muss dafür nicht geöffnet bleiben.
+
+Jede Firma erhält einen eigenen Dossier-Auftrag. Die Oberfläche unterscheidet **Zur Vertiefung**, **Wird vertieft**, **Wiederholung geplant** und **Vertieft** und zeigt Fortschritt, Versuchszahl und nächsten Versuch. Unterbrochene Aufträge werden beim nächsten Worker-Durchlauf wieder aufgenommen. Fehlgeschlagene Versuche werden nach 2, 5, 15 und 60 Minuten erneut versucht; nach fünf Fehlschlägen pausiert die Firma bis zum nächsten Tag. **Vertiefungen fortsetzen** stößt offene Arbeit an und gibt fehlgeschlagene Aufträge sofort wieder frei. Eine fehlende Worker-Aktivität wird angezeigt.
+
+Für eine abgeschlossene Vertiefung müssen eine überprüfbare gelesene Firmenquelle und ein auswertbares KI-Dossier vorliegen. Ist nur der erneut gelesene Originalbeleg verfügbar, wird die Firma trotzdem klassifiziert und ausdrücklich als **Vertieft · Datenlage eingeschränkt** gekennzeichnet. Nicht belegte Kontakte und Kennzahlen bleiben unbekannt. Fehlende Zugänge oder dauerhaft unlesbare Quellen werden nicht als erfolgreiche Recherche ausgegeben.
+
+KI-Auswertungen fordern strukturiertes JSON an. Vollständige Arrays, JSON-Objekte mit Firmenlisten und einzeln gelieferte Firmen werden verarbeitet; eine abgebrochene oder formal falsche Antwort erhält höchstens einen erneuten Versuch mit größerem Ausgabebudget. Unvollständige Antworten werden nicht als „keine Treffer“ gespeichert. Transiente Verbindungsfehler und HTTP 429/502/503/504 beim Lesen einer Originalseite erhalten höchstens einen kurzfristigen Wiederholungsversuch; längeres `Retry-After` wird respektiert. Zertifikatsprüfungen bleiben aktiv.
+
 
 Ein Klick auf die Firma öffnet das Dossier mit vier Bereichen:
 
