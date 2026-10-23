@@ -2,11 +2,11 @@
 
 import {useEffect} from 'react';
 import {Button,Chip,Modal} from '@heroui/react';
-import {ArrowRight,Building2,Clock3,LayoutDashboard,LogOut,Radar,ScanSearch,Settings2} from 'lucide-react';
+import {ArrowRight,Building2,Clock3,LayoutDashboard,LogOut,Network,Radar,ScanSearch,Settings2} from 'lucide-react';
 import type {SearchConfig} from './dashboard-types';
 
-export type View='dashboard'|'companies'|'stale'|'research'|'settings';
-export const navigation=[{id:'dashboard' as const,label:'Übersicht',icon:LayoutDashboard},{id:'companies' as const,label:'Alle Firmen',icon:Building2},{id:'stale' as const,label:'Zurückgestellt',icon:Clock3},{id:'research' as const,label:'Recherche',icon:ScanSearch},{id:'settings' as const,label:'Einstellungen',icon:Settings2}];
+export type View='dashboard'|'companies'|'stale'|'research'|'settings'|'graph';
+export const navigation=[{id:'dashboard' as const,label:'Übersicht',icon:LayoutDashboard},{id:'companies' as const,label:'Alle Firmen',icon:Building2},{id:'graph' as const,label:'Verbindungen',icon:Network},{id:'stale' as const,label:'Zurückgestellt',icon:Clock3},{id:'research' as const,label:'Recherche',icon:ScanSearch},{id:'settings' as const,label:'Einstellungen',icon:Settings2}];
 type Props={view:View;onNavigate:(view:View)=>void;mobileOpen:boolean;onMobileChange:(open:boolean)=>void;total:number;stale:number;config:SearchConfig|null;onLogout:()=>void};
 
 export default function WorkspaceNavigation(props:Props){
@@ -17,7 +17,7 @@ export default function WorkspaceNavigation(props:Props){
   <Modal.Backdrop isOpen={mobileOpen} onOpenChange={onMobileChange}>
    <Modal.Container size="full" placement="top" className="mr-auto w-[min(320px,calc(100%_-_24px))] flex-none p-0 sm:p-0"><Modal.Dialog aria-label="Navigation" className="h-full rounded-none bg-background p-0"><Modal.Heading className="sr-only">Navigation</Modal.Heading><Modal.CloseTrigger aria-label="Navigation schließen" className="z-10 min-h-11 min-w-11"/><SidebarContent {...props}/></Modal.Dialog></Modal.Container>
   </Modal.Backdrop>
-  <nav className="qv-bottom-nav" aria-label="Schnellnavigation">{navigation.filter(item=>item.id!=='stale').map(item=><Button key={item.id} variant="ghost" aria-current={view===item.id||(view==='stale'&&item.id==='companies')?'page':undefined} className="qv-bottom-link" onPress={()=>onNavigate(item.id)}><item.icon size={20}/><span>{item.id==='companies'?'Firmen':item.label}</span></Button>)}</nav>
+  <nav className="qv-bottom-nav" aria-label="Schnellnavigation">{navigation.filter(item=>item.id!=='stale'&&item.id!=='graph').map(item=><Button key={item.id} variant="ghost" aria-current={view===item.id||(view==='stale'&&item.id==='companies')?'page':undefined} className="qv-bottom-link" onPress={()=>onNavigate(item.id)}><item.icon size={20}/><span>{item.id==='companies'?'Firmen':item.label}</span></Button>)}</nav>
  </>;
 }
 

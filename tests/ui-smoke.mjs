@@ -20,9 +20,11 @@ const items=[
  {id:'2',name:'Beispiel Logistik GmbH',city:'Augsburg',signal:'Modernisierung der IT-Infrastruktur',summary:'Projekt für Netzwerk und Backup.',score:72,source_url:'https://example.net/jobs',research_status:'pending',created_at:daysAgo(1),stale_at:daysAgo(-9),is_stale:false,chart_eligible:true},
  {id:'3',name:'Ruhende Beispiel GmbH',city:'Starnberg',signal:'Cloud-Migration ausgeschrieben',summary:'Älterer dokumentierter Bedarf.',score:95,source_url:'https://example.com/projekt',research_status:'complete',created_at:daysAgo(15),stale_at:daysAgo(5),is_stale:true,chart_eligible:false},
 ];
+const sharedAddress={field:'Geschäftsanschrift',value:'Musterstraße 10, 80331 München',group:'company',sourceUrl:'https://example.org/impressum',quote:'Musterstraße 10, 80331 München',checkedAt:now};
+items[0].assessment.facts.push(sharedAddress);items[1].assessment={facts:[sharedAddress]};
 const intelligence=testLoader()('lib/business-triggers.ts').buildEventIntelligence(items[0].evidence_quote,'jobs',{hypotheses:['Eine ergänzende Unterstützung beim Aufbau könnte sinnvoll sein.'],offer:{title:'Microsoft-365-Bestandsaufnahme',description:'Begrenztes Einstiegsprojekt als Gesprächsangebot.',benefit:'Planungsgrundlage',scope:'Analyse und Maßnahmenplan',hoursMin:5,hoursMax:12,monthlyPotential:'high'}},{hourlyRate:100,serviceOffer:config.serviceOffer,model:config.model});
 Object.assign(items[0],{opportunity_category:intelligence.category,it_need_confidence:intelligence.itNeedConfidence,entry_opportunity_score:intelligence.entryOpportunityScore,event_intelligence:intelligence});
-let deletes=0,deepResumes=0;
+let deletes=0,deepResumes=0,websiteChecks=0,socialSteps=0;
 const assistantMessages=[];
 const activities=[];
 function overview(){const active=items.filter(item=>!item.is_stale);return {demo:false,items,stats:{total:items.length,active:active.length,stale:items.length-active.length,highMatch:active.filter(item=>item.score>=80).length,researched:items.filter(item=>item.research_status==='complete').length,pending:items.filter(item=>item.research_status!=='complete').length,deepRunning:0,deepWorkerLastSeen:now,contactable:1,newToday:0,averageScore:80},charts:{scoreBands:[{label:'Hohe Passung',color:'green',count:active.filter(item=>item.score>=80).length},{label:'Mittlere Passung',color:'amber',count:1},{label:'Geringe Passung',color:'red',count:0}],cities:[{city:'München',count:1},{city:'Augsburg',count:1}]},latestRun:{id:1,status:'completed',stage:'Recherche abgeschlossen',started_at:now,finished_at:now,searched:31,discovered:214,verified:60,imported:12,rejected:35},limit:500}}
@@ -32,12 +34,15 @@ await page.route('**/api/**',async route=>{
  if(path==='/api/auth')json={authenticated:true,setup:false};
  else if(path==='/api/settings'){if(req.method()==='PUT'){const body=req.postDataJSON();config={...config,...body,...(body.clearFirecrawlKey?{firecrawlKeySet:false,firecrawlKey:'',clearFirecrawlKey:false}:{})}};json=config}
  else if(path==='/api/opportunities'){if(req.method()==='DELETE'){const body=req.postDataJSON();assert.ok(!('blockRediscovery' in body));assert.ok(Array.isArray(body.ids));deletes++;for(const id of body.ids){const index=items.findIndex(item=>item.id===id);if(index>=0)items.splice(index,1)}json={ok:true,deleted:body.ids.length}}else json=overview()}
+ else if(path==='/api/opportunities/graph')json={...testLoader()('lib/company-graph.ts').companyGraph(items),limit:2000};
+ else if(path==='/api/social'){if(req.method()==='POST'){const body=req.postDataJSON();socialSteps++;json={status:body.action==='interact'?'session_saved':'needs_attention',url:'https://www.instagram.com/accounts/login/',width:1100,height:800,screenshot:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',fields:body.action==='interact'?[]:[{index:0,type:'text',label:'Sicherheitscode'}]}}else json={items:[],jobs:[]}}
+ else if(path==='/api/opportunities/website'){websiteChecks++;json={audit:{}}}
  else if(path==='/api/opportunities/events')json={events:[{id:10,event_description:items[0]?.signal,evidence_quote:items[0]?.evidence_quote,source_url:'https://example.org/karriere',verification_status:'verified',published_at:null,checked_at:now,opportunities:[{id:11,hypothesis:intelligence.hypotheses[0].statement,intelligence}]}]};
  else if(path==='/api/opportunities/exclusions')json={items:[]};
  else if(path==='/api/research/usage')json={summary:{calls:2,input_tokens:1000,output_tokens:500,estimated_cost_usd:null,unpriced_calls:2}};
  else if(path==='/api/research/deep'){assert.equal(req.postDataJSON().retryFailed,true);deepResumes++;for(const item of items)if(item.research_status!=='complete')item.research_status='complete';json={researched:1,pending:0,ready:0,errors:[]}}
  else if(path==='/api/research')json=req.method()==='POST'?{queued:true,run:{id:2,status:'queued'}}:{runs:[overview().latestRun]};
- else if(path==='/api/activities'){if(req.method()==='POST'){const entry=req.postDataJSON();activities.push({...entry,id:1,created_at:now});const lead=items.find(item=>String(item.id)===String(entry.id));if(entry.note.trim()){lead.is_stale=false;lead.chart_eligible=true;lead.stale_at=daysAgo(-10)}json={ok:true,refreshesRanking:!!entry.note.trim()}}else json={items:activities}}
+ else if(path==='/api/activities'){if(req.method()==='POST'){const entry=req.postDataJSON();activities.push({...entry,id:activities.length+1,created_at:now});const lead=items.find(item=>String(item.id)===String(entry.id));if(entry.origin==='link'){lead.contact_count=(lead.contact_count||0)+1;lead.ranking_score=Math.max(0,(lead.entry_opportunity_score??lead.score)-15)}if(entry.note.trim()){lead.is_stale=false;lead.chart_eligible=true;lead.stale_at=daysAgo(-10)}json={ok:true,refreshesRanking:!!entry.note.trim()}}else json={items:activities}}
  else if(path==='/api/opportunities/signals')json={signals:[{id:1,source_url:'https://example.org/karriere',evidence_quote:items[0].evidence_quote,signal:items[0].signal,category:'jobs',priority:'A',source_reliability:'first_party',published_at:null,last_checked_at:now,status:'active'}],events:[]};
  else if(path==='/api/assistant'){
   if(req.method()==='POST'){
@@ -55,6 +60,9 @@ try{
  await page.getByRole('button',{name:'Dossier öffnen: Beispielfirma Industrie GmbH'}).waitFor();
  await page.getByRole('button',{name:'Vertiefungen fortsetzen',exact:true}).click();
  await page.getByRole('button',{name:'Vertiefungen fortsetzen',exact:true}).waitFor({state:'detached'});assert.equal(deepResumes,1);
+ await page.getByRole('button',{name:/Sortierung/}).click();await page.getByRole('option',{name:'Höchster Score',exact:true}).click();assert.equal(await page.getByRole('button',{name:'Dossier öffnen: Beispiel Logistik GmbH'}).count(),1,'Sorting keeps firms below 80 points');
+ await page.getByRole('button',{name:/Sortierung/}).click();await page.getByRole('option',{name:'Niedrigster Score',exact:true}).click();await page.getByRole('grid',{name:'Opportunities'}).getByRole('row').nth(1).waitFor();assert.match((await page.getByRole('grid',{name:'Opportunities'}).getByRole('row').allTextContents())[1],/Logistik/);
+ await page.getByRole('button',{name:/Sortierung/}).click();await page.getByRole('option',{name:'Höchster Score',exact:true}).click();
  assert.equal(await page.getByText('Ruhende Beispiel GmbH',{exact:true}).count(),0,'Stale lead excluded from dashboard');
  await page.screenshot({path:output+'/dashboard.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:/Opportunity-Art/}).click();
@@ -68,6 +76,7 @@ try{
  await page.getByText('Microsoft-365-Bestandsaufnahme',{exact:true}).first().waitFor();
  await page.getByText('KI-Hypothese · nicht bestätigt',{exact:true}).first().waitFor();
  assert.equal(await page.getByRole('link',{name:'Anrufen',exact:true}).getAttribute('href'),'tel:+4989123456');
+ await page.getByRole('link',{name:'Anrufen',exact:true}).evaluate(element=>{element.addEventListener('click',event=>event.preventDefault(),{once:true});element.click()});await page.getByText('Anruf angestoßen',{exact:true}).waitFor();assert.equal(activities[0].origin,'link');assert.equal(activities[0].note,'');await page.getByRole('tab',{name:'Überblick',exact:true}).click();
  await page.screenshot({path:output+'/dossier.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:'Mit KI besprechen',exact:true}).click();
  await page.getByRole('heading',{name:'Dein KI-Begleiter',exact:true}).waitFor();
@@ -75,7 +84,7 @@ try{
  await page.getByRole('tab',{name:'Kontakte & Firma'}).click();
  await page.getByText('Umsatz 2025',{exact:true}).waitFor();
  await page.getByRole('tab',{name:'Belege',exact:true}).click();
- await page.getByText('Priorität A',{exact:true}).waitFor();
+ await page.getByText('Priorität A',{exact:true}).waitFor();await page.getByText('Websiteanalyse',{exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:'Mein Website-Check'}).getAttribute('href'),'https://pllana.io/website-check');await page.getByRole('button',{name:'Website analysieren',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[data-pending=true]'));assert.equal(websiteChecks,1);await page.getByText('Social-Media-Analyse',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Firmendossier schließen'}).click();
  await page.getByRole('navigation',{name:'Hauptnavigation'}).getByRole('button',{name:/Zurückgestellt/}).click();
  await page.getByRole('button',{name:'Dossier öffnen: Ruhende Beispiel GmbH'}).click();
@@ -114,7 +123,9 @@ try{
  await page.getByRole('button',{name:'Einstellungen speichern'}).click();
  await page.getByText('Alle Einstellungen wurden gespeichert.').waitFor();
  assert.equal(config.sources.length,0,'Removing a source persists');
+ await page.getByRole('tab',{name:'Verbindungen',exact:true}).click();await page.getByRole('button',{name:'Sitzung anzeigen',exact:true}).click();await page.getByText('Anmeldung oder Sicherheitsabfrage benötigt deine Aktion.',{exact:true}).waitFor();await page.getByRole('textbox',{name:'Sicherheitscode',exact:true}).fill('123456');await page.getByRole('button',{name:'Eingeben',exact:true}).click();await page.getByText('Browser-Sitzung gespeichert. Prüfe die angezeigte Seite.',{exact:true}).waitFor();assert.equal(socialSteps,2);
  for(const name of ['KI & Quellen','Verbindungen','Konto'])await page.getByRole('tab',{name,exact:true}).click();
+ await page.getByRole('navigation',{name:'Hauptnavigation'}).getByRole('button',{name:'Verbindungen',exact:true}).click();await page.getByRole('heading',{name:'Firmenverbindungen',exact:true}).waitFor();await page.getByText('Belege der Verbindung',{exact:true}).waitFor();await page.screenshot({path:output+'/company-graph.png',animations:'disabled'});await page.getByRole('navigation',{name:'Hauptnavigation'}).getByRole('button',{name:'Einstellungen',exact:true}).click();
  await page.getByRole('button',{name:'KI-Begleiter',exact:true}).click();
  await page.getByRole('dialog').waitFor();
  await page.getByRole('textbox',{name:'Nachricht an den Begleiter'}).fill('Prüfe https://example.org/');

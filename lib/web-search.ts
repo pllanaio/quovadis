@@ -168,7 +168,7 @@ async function pdfPage(response:Response,url:URL):Promise<VerifiedPage|null>{
  }finally{await document.loadingTask.destroy()}
 }
 export function socialKind(value:string){
- try{const host=new URL(value).hostname.replace(/^www\./,'');if(/(^|\.)(linkedin\.com|xing\.com)$/.test(host))return host.endsWith('linkedin.com')?'linkedin':'xing';if(/(^|\.)instagram\.com$/.test(host))return 'instagram';if(/(^|\.)(facebook\.com|fb\.com)$/.test(host))return 'facebook';if(/(^|\.)(youtube\.com|youtu\.be)$/.test(host))return 'youtube';if(/(^|\.)(twitter\.com|x\.com)$/.test(host))return 'social';return null}catch{return null}
+ try{const host=new URL(value).hostname.replace(/^www\./,'');if(/(^|\.)(linkedin\.com|xing\.com)$/.test(host))return host.endsWith('linkedin.com')?'linkedin':'xing';if(/(^|\.)instagram\.com$/.test(host))return 'instagram';if(/(^|\.)(facebook\.com|fb\.com)$/.test(host))return 'facebook';if(/(^|\.)(youtube\.com|youtu\.be)$/.test(host))return 'youtube';if(/(^|\.)(twitter\.com|x\.com)$/.test(host))return 'social';if(/(^|\.)tiktok\.com$/.test(host))return 'tiktok';if(/(^|\.)pinterest\.com$/.test(host))return 'pinterest';return null}catch{return null}
 }
 function contact(kind:string,value:string,url:string,page:VerifiedPage,quote:string,label=kind):PublicContact{return {kind,label,value,url,sourceUrl:page.url,quote:quote.slice(0,500),checkedAt:page.checkedAt}}
 function decoratePage(page:VerifiedPage):VerifiedPage{
@@ -244,6 +244,17 @@ async function localScrape(value:string,signal?:AbortSignal):Promise<VerifiedPag
   return decoratePage(page);
  }
  return null;
+}
+/** Public response metadata, with the same destination and redirect checks as research. */
+export async function websiteResponse(value:string,signal?:AbortSignal){
+ let url=publicWebUrl(value);if(!url)throw Error('Öffentliche Website erforderlich.');
+ for(let redirects=0;redirects<4;redirects++){
+  const response=await fetchOriginal(url,signal);
+  if(response.status>=300&&response.status<400){const location=response.headers.get('location');await response.body?.cancel();url=location?publicWebUrl(new URL(location,url).href):null;if(!url)throw Error('Nicht öffentliche Weiterleitung.');continue}
+  const headers=Object.fromEntries(['strict-transport-security','content-security-policy','x-content-type-options','x-frame-options','referrer-policy','server'].map(key=>[key,response.headers.get(key)]));
+  await response.body?.cancel();return {url:url.href,status:response.status,https:url.protocol==='https:',headers};
+ }
+ throw Error('Zu viele Weiterleitungen.');
 }
 export async function scrapePage(firecrawlKey:string,value:string,signal?:AbortSignal):Promise<VerifiedPage|null>{
  if(firecrawlKey&&(firecrawlScrapeBackoff.get(firecrawlKey)||0)<Date.now()){

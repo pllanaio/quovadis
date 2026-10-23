@@ -10,10 +10,16 @@ export async function GET(req: Request) {
     const denied = await guard(req);
     if (denied) return denied;
     await init();
+    const requestedId=new URL(req.url).searchParams.get('id');
+    if(requestedId){
+      if(!/^[1-9][0-9]{0,18}$/.test(requestedId)||BigInt(requestedId)>BigInt('9223372036854775807'))return NextResponse.json({error:'Ungültige Firma.'},{status:400});
+      const result=await db().query(`${LEADS_CTE} SELECT * FROM ranked_leads WHERE id=$1`,[requestedId]);const lead=result.rows[0];
+      return lead?NextResponse.json({item:{...lead,...leadLifecycle(lead)}}):NextResponse.json({error:'Firma nicht gefunden.'},{status:404});
+    }
     const [leads, overview, latest] = await Promise.all([
       db().query(`${LEADS_CTE}
         SELECT * FROM ranked_leads
-        ORDER BY chart_eligible DESC, score DESC NULLS LAST, freshness_at DESC, id DESC
+        ORDER BY chart_eligible DESC, ranking_score DESC NULLS LAST, score DESC NULLS LAST, freshness_at DESC, id DESC
         LIMIT 500`),
       db().query(`${LEADS_CTE}
         SELECT jsonb_build_object(

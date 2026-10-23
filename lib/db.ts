@@ -20,6 +20,9 @@ export async function init() {
       id BIGSERIAL PRIMARY KEY, opportunity_id BIGINT REFERENCES opportunities(id),
       kind TEXT NOT NULL, note TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT now()
     );
+    ALTER TABLE activities ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'manual';
+    ALTER TABLE activities ADD COLUMN IF NOT EXISTS target TEXT;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS website_audit JSONB;
     CREATE INDEX IF NOT EXISTS activities_lead_timeline ON activities(opportunity_id,created_at DESC);
     ALTER TABLE opportunities DROP CONSTRAINT IF EXISTS opportunities_source_url_key;
     CREATE UNIQUE INDEX IF NOT EXISTS opportunities_source_name_unique ON opportunities(source_url,name);
@@ -134,6 +137,16 @@ export async function init() {
     CREATE UNIQUE INDEX IF NOT EXISTS research_runs_scheduled_day_unique ON research_runs(scheduled_date) WHERE scheduled_date IS NOT NULL;
     CREATE INDEX IF NOT EXISTS research_runs_queue ON research_runs(status,started_at);
     CREATE TABLE IF NOT EXISTS assistant_messages(id BIGSERIAL PRIMARY KEY,role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,proposal JSONB,evaluation JSONB,applied_at TIMESTAMPTZ,code_draft_id BIGINT,created_at TIMESTAMPTZ DEFAULT now());
+    CREATE TABLE IF NOT EXISTS social_analyses (
+      id BIGSERIAL PRIMARY KEY,opportunity_id BIGINT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL,profile_url TEXT NOT NULL,analysis JSONB NOT NULL,checked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE(opportunity_id,profile_url)
+    );
+    CREATE TABLE IF NOT EXISTS social_jobs (
+      id BIGSERIAL PRIMARY KEY,opportunity_id BIGINT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL,profile_url TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',attempts INTEGER NOT NULL DEFAULT 0,
+      error TEXT,next_attempt_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),UNIQUE(opportunity_id,profile_url)
+    );
     CREATE TABLE IF NOT EXISTS company_reviews (
       id BIGSERIAL PRIMARY KEY,url TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',
       opportunity_id BIGINT REFERENCES opportunities(id) ON DELETE SET NULL,

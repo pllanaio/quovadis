@@ -84,11 +84,11 @@ export function uniqueQueries(values:unknown[],cities:string[],seen:Set<string>=
 }
 
 const templates:Record<Scout,string[]>={
- external:['IT Dienstleister gesucht','externe IT Betreuung Ausschreibung','IT Support Wartungsvertrag Ausschreibung','IT Outsourcing Dienstleisterwechsel'],
+ external:['IT Dienstleister gesucht','externe IT Betreuung Mittelstand','IT Support Wartungsvertrag Unternehmen','IT Outsourcing Dienstleisterwechsel'],
  business:['Unternehmen neue Niederlassung eröffnet','Unternehmen Übernahme Fusion','Unternehmen neuer Onlineshop','Unternehmen neue Produktionsanlage','Unternehmen neue Tochtergesellschaft','Unternehmen Prozessautomatisierung'],
- projects:['ERP Einführung Implementierungspartner','IT Projekt Ausschreibung','CRM DMS Einführung Projekt','Cloud Migration geplant','IT Sicherheit Compliance Einführung'],
+ projects:['ERP Einführung Implementierungspartner','IT Modernisierung Mittelstand Projekt','CRM DMS Einführung Projekt','Cloud Migration geplant','IT Sicherheit Compliance Einführung'],
  growth:['Unternehmen Standort Erweiterung','Unternehmen wächst neue Mitarbeiter','Unternehmen Expansion neue Teams','Unternehmen vergrößert Betriebsstätte'],
- hiring:['erster IT Administrator Aufbau','IT Generalist Stellenangebot','IT Allrounder Karriere'],
+ hiring:['IT Administrator Stellenangebot','Systemadministrator Mittelstand Karriere','IT Generalist Stellenangebot','IT Allrounder Karriere','IT Support Stellenangebot','IT Infrastruktur Aufbau Karriere'],
 };
 const assignments=new Map<string,Scout>();
 export function scoutForQuery(query:string):Scout{

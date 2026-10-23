@@ -5,7 +5,7 @@ export const OPPORTUNITY_CATEGORIES=['EXPLICIT_EXTERNAL_DEMAND','OPEN_IT_PROJECT
 export type OpportunityCategory=typeof OPPORTUNITY_CATEGORIES[number];
 export type Scout='external'|'business'|'projects'|'growth'|'hiring';
 export const SCOUTS:[Scout,string][]=[['external','Externer IT-Bedarf'],['business','Geschäftliche Ereignisse'],['projects','IT-Projekte'],['growth','Unternehmenswachstum'],['hiring','IT-Stellenanzeigen']];
-export const DEFAULT_SCOUT_WEIGHTS:Record<Scout,number>={external:25,business:30,projects:20,growth:15,hiring:10};
+export const DEFAULT_SCOUT_WEIGHTS:Record<Scout,number>={external:25,business:20,projects:20,growth:10,hiring:25};
 export const CATEGORY_LABELS:Record<OpportunityCategory,string>={EXPLICIT_EXTERNAL_DEMAND:'Externer IT-Bedarf',OPEN_IT_PROJECT:'Konkretes IT-Projekt',BUSINESS_TRIGGER:'Business Trigger',GROWTH_TRIGGER:'Wachstum',MODERNIZATION_TRIGGER:'Modernisierung',INFERRED_IT_OPPORTUNITY:'Abgeleitete IT-Chance',INTERNAL_HIRING_ONLY:'Interne IT-Stelle'};
 export type EntryOffer={title:string;description:string;benefit:string;scope:string;hoursMin:number;hoursMax:number;priceMin:number;priceMax:number;hourlyRate:number;estimated:true;assumptions:string[];openQuestions:string[];followUps:string[];monthlyPotential:'high'|'medium'|'low'|'unknown'};
 export type EventIntelligence={category:OpportunityCategory;eventCategory:string;verifiedEvent:string;hypotheses:{statement:string;status:'hypothesis'}[];offer:EntryOffer|null;timing:string;unknowns:string[];conversationOpener:string;itNeedConfidence:number;entryOpportunityScore:number;externalEngagement:'confirmed'|'plausible'|'unknown';scoreReason:string;partnerAlreadySelected:boolean;modelVersion:string;researchedAt:string};
@@ -19,9 +19,10 @@ const list=(value:unknown)=>Array.isArray(value)?value.filter(v=>typeof v==='str
 export function classifyBusinessEvent(quote:string,signalType='news'):{category:OpportunityCategory;eventCategory:string;needConfidence:number;partnerSelected:boolean}|null{
  const q=normalizeEvidenceText(quote),it=IT.test(q),partnerSelected=PARTNER.test(q);
  if(/(?:kein[enr]?|nicht|abgesagt|verworfen).{0,35}(?:neuer? standort|eröffn|erp.einführung|migration)/i.test(q))return null;
- if(!it&&!CHANGE.test(q))return null;
+ const hiring=signalType==='jobs'&&HIRING.test(q);
+ if(!it&&!hiring&&!CHANGE.test(q))return null;
  if((explicitExternalDemand(q)||/implementierungspartner.{0,25}gesucht|such(?:en|t).{0,40}implementierungspartner/i.test(q))&&!partnerSelected)return {category:'EXPLICIT_EXTERNAL_DEMAND',eventCategory:'external_demand',needConfidence:95,partnerSelected};
- if(it&&(signalType==='jobs'||HIRING.test(q)))return {category:'INTERNAL_HIRING_ONLY',eventCategory:'hiring',needConfidence:/erste|erstmal|aufbau|generalist|allrounder/i.test(q)?80:65,partnerSelected};
+ if((it||hiring)&&(signalType==='jobs'||HIRING.test(q)))return {category:'INTERNAL_HIRING_ONLY',eventCategory:'hiring',needConfidence:/erste|erstmal|aufbau|generalist|allrounder/i.test(q)?80:65,partnerSelected};
  if(it&&PROJECT.test(q))return {category:/modernisier|erneuer|optimier|migration|migrier/i.test(q)?'MODERNIZATION_TRIGGER':'OPEN_IT_PROJECT',eventCategory:'it_project',needConfidence:partnerSelected?65:85,partnerSelected};
  if(CHANGE.test(q)){
   const growth=/wachs|wächst|waechst|expand|vergr[öo]ßer|vergroesser|neue\s+(?:teams|mitarbeiter)/i.test(q)&&!/übernahm|fusion|gründ|gruend|umstrukturier/i.test(q);

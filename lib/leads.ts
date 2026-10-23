@@ -5,6 +5,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 type LeadFreshnessInput = {
   score?: number | null;
+  entry_opportunity_score?:number|null;contact_count?:number;last_contact_at?:string|Date|null;
   created_at?: string | Date | null;
   detected_at?: string | Date | null;
   last_note_at?: string | Date | null;
@@ -27,7 +28,8 @@ export function leadLifecycle(lead: LeadFreshnessInput, now = Date.now()) {
     stale_at: new Date(staleAt).toISOString(),
     is_stale: isStale,
     chart_eligible: !isStale,
-    ranking_score: Math.round(score * (isStale ? 0.25 : 1)),
+    contact_status:lead.contact_count?'contacted':'new',
+    ranking_score: Math.round(Math.max(0,Number(lead.entry_opportunity_score??score)-(lead.contact_count?15:0)) * (isStale ? 0.25 : 1)),
     score_color: score >= 80 ? 'green' : score >= 60 ? 'amber' : 'red',
   };
 }
@@ -38,17 +40,20 @@ export const LEADS_CTE = `
     SELECT opportunity_id,
       max(created_at) FILTER (WHERE length(btrim(COALESCE(note, ''))) > 0) AS last_note_at,
       max(created_at) AS last_activity_at,
+      max(created_at) FILTER(WHERE kind IN ('call','email')) AS last_contact_at,
+      count(*) FILTER(WHERE kind IN ('call','email'))::int AS contact_count,
       count(*)::int AS activity_count
     FROM activities
     GROUP BY opportunity_id
   ), lead_freshness AS (
-    SELECT o.*, a.last_note_at, a.last_activity_at,
+    SELECT o.*, a.last_note_at, a.last_activity_at,a.last_contact_at,COALESCE(a.contact_count,0) AS contact_count,
       COALESCE(a.activity_count, 0) AS activity_count,
       COALESCE(a.last_note_at, o.created_at, o.detected_at, now()) AS freshness_at
     FROM opportunities o
     LEFT JOIN activity_summary a ON a.opportunity_id = o.id
   ), ranked_leads AS (
-    SELECT *, freshness_at > now() - interval '10 days' AS chart_eligible
+    SELECT *, freshness_at > now() - interval '10 days' AS chart_eligible,
+      round(GREATEST(0,COALESCE(entry_opportunity_score,score,0)-CASE WHEN contact_count>0 THEN 15 ELSE 0 END)*CASE WHEN freshness_at > now()-interval '10 days' THEN 1 ELSE 0.25 END) AS ranking_score
     FROM lead_freshness
   )
 `;

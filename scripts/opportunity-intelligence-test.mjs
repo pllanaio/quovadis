@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {testLoader} from './ts-test-loader.mjs';
+const load=testLoader();
+const {companyGraph}=load('lib/company-graph.ts'),{groundSocialAnalysis}=load('lib/social-research.ts'),{leadLifecycle}=load('lib/leads.ts');
+const fact={group:'company',field:'Geschäftsanschrift',value:'Musterstraße 10, 80331 München',sourceUrl:'https://example.org/impressum',quote:'Musterstraße 10, 80331 München'};
+const graph=companyGraph([{id:'1',name:'Alpha',city:'München',assessment:{facts:[fact]}},{id:'2',name:'Beta',city:'München',assessment:{facts:[fact]}},{id:'3',name:'Gamma',city:'München',assessment:{facts:[{...fact,sourceUrl:'',value:'Andere Straße 3'}]}}]);
+assert.equal(graph.entities.length,1);assert.equal(graph.entities[0].evidence.length,2);assert.equal(companyGraph([{id:'1',name:'Alpha',city:'München'},{id:'2',name:'Beta',city:'München'}]).entities.length,0,'Same city is not a business relationship');
+const quote='Das Produkt kostet 199 EUR. Cloud-Anbindung wird geplant.',url='https://www.instagram.com/p/example/';
+const analysis=groundSocialAnalysis({summary:'Beobachtete Produktmeldung.',topics:['Produkt'],posts:[{sourceUrl:url,quote,topics:['Cloud'],prices:['199 EUR','999 EUR']}],opportunities:[{sourceUrl:url,quote,hypothesis:'Mögliche Schnittstellenhilfe.'},{sourceUrl:'https://invented.example.org',quote,hypothesis:'Unbelegt.'}]},{posts:[{url,text:quote,publishedAt:null}],profileUrl:'https://www.instagram.com/example/',coverage:'Sichtbarer Ausschnitt.'});
+assert.deepEqual(analysis.posts[0].prices,['199 EUR']);assert.equal(analysis.opportunities.length,1);assert.equal(analysis.coverage.postsPerMonth,null,'No invented rate without dates');assert.equal(analysis.coverage.observedPosts,1);
+const created=new Date().toISOString(),fresh=leadLifecycle({score:86,created_at:created}),contacted=leadLifecycle({score:86,created_at:created,contact_count:1});assert.equal(fresh.ranking_score,86);assert.equal(contacted.ranking_score,71);assert.equal(contacted.freshness_at,fresh.freshness_at,'Clicking does not renew the ten-day note window');assert.equal(leadLifecycle({score:86,created_at:new Date(Date.now()-11*86400000).toISOString(),contact_count:1}).is_stale,true);
+const {lighthouseResult}=load('lib/website-audit.ts');const result=lighthouseResult({lighthouseResult:{categories:{performance:{score:.6},accessibility:{score:1}},audits:{slow:{title:'Langsam',score:.4,description:'Messwert'},manual:{score:null},irrelevant:{score:.2,scoreDisplayMode:'manual'}}}});assert.equal(result.performance,60);assert.equal(result.seo,null);assert.equal(result.issues.length,1);
+assert.throws(()=>lighthouseResult({lighthouseResult:{runtimeError:{code:'NO_FCP'}}}));
+console.log('Opportunity intelligence: source-backed graph, no city inference, observed social coverage/prices, contact priority without stale renewal, and Lighthouse partial/error handling passed');

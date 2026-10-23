@@ -17,11 +17,12 @@ export type ResearchLead={
 };
 export type Lead=ResearchLead&{
  name:string;city:string;signal:string;summary:string;source_url:string;score:number;opportunity_category?:OpportunityCategory;it_need_confidence?:number;entry_opportunity_score?:number;external_engagement?:string;event_intelligence?:EventIntelligence|null;
- phone?:string|null;email?:string|null;company_url?:string|null;created_at?:string;
+ contact_count?:number;contact_status?:string;last_contact_at?:string|null;website_audit?:WebsiteAudit|null;phone?:string|null;email?:string|null;company_url?:string|null;created_at?:string;
  published_at?:string|null;is_stale?:boolean;chart_eligible?:boolean;last_note_at?:string|null;
  freshness_at?:string|null;stale_at?:string|null;ranking_score?:number;signal_count?:number;
 };
-export type Activity={id:number;kind:'note'|'call'|'email';note:string;created_at:string};
+export type WebsiteAudit={intelligence?:{technologies:string[];sections:{key:string;title:string;description:string;score:number|null;confidence:string;items:{label:string;value:string;status:string;evidence?:string}[]}[];notes:string[]};url:string;checkedAt:string;strategy:string;performance:number|null;accessibility:number|null;seo:number|null;bestPractices:number|null;issues:{id:string;title:string;description:string;score:number|null;displayValue?:string}[];reportUrl:string;dns?:Record<string,string[]>;http?:{status:number;https:boolean};limitations?:string[]};
+export type Activity={id:number;origin?:string;target?:string|null;kind:'note'|'call'|'email';note:string;created_at:string};
 export type OpportunitySignal={id:number;source_url:string;evidence_quote:string;signal:string;category:string;priority:string;source_reliability:string;published_at:string|null;first_seen_at:string;last_checked_at:string;status:string};
 export type SignalEvent={signal_id:number;kind:string;detail:string;created_at:string};
 

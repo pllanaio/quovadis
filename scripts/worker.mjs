@@ -54,6 +54,9 @@ async function companyLoop(){
  setTimeout(companyLoop,delay);
 }
 
+async function socialLoop(){
+ let delay=30000;try{const result=await request('/api/research/social','POST',undefined,5*60*1000);if(result.ready>0)delay=250}catch(error){console.error('Social-Media-Recherche:',String(error))}setTimeout(socialLoop,delay);
+}
 // Source monitoring has its own loop; slow sites cannot stall the dossier queue.
 async function monitorLoop(){
  try{
@@ -73,5 +76,6 @@ setTimeout(scheduleLoop,5000);
 setTimeout(researchLoop,10000);
 setTimeout(deepLoop,15000);
 setTimeout(companyLoop,12000);
+setTimeout(socialLoop,25000);
 setTimeout(monitorLoop,20000);
 setTimeout(mailLoop,60000);

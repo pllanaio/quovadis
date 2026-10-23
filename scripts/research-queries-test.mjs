@@ -13,7 +13,7 @@ try{
  const baseline=baselineQueries({cities,skills});
  assert.equal(baseline.length,30,'Thirty focused queries across five weighted scouts');
  const counts=Object.fromEntries(['external','business','projects','growth','hiring'].map(scout=>[scout,baseline.filter(q=>scoutForQuery(q)===scout).length]));
- assert.deepEqual(counts,{external:8,business:9,projects:6,growth:4,hiring:3});
+ assert.deepEqual(counts,{external:8,business:6,projects:6,growth:3,hiring:7});
  for(const query of baseline){
   assert.equal(normalizeQuery(query,cities),query);
   assert.ok(query.length<=160&&query.split(' ').length<=16);
