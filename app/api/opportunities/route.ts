@@ -1,7 +1,7 @@
 import {guard} from '@/lib/auth';
 import {NextResponse} from 'next/server';
 import {db, init} from '@/lib/db';
-import {LEADS_CTE, leadLifecycle} from '@/lib/leads';
+import {LEADS_CTE, leadLifecycle, companyIdentity} from '@/lib/leads';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,4 +51,28 @@ export async function GET(req: Request) {
   } catch {
     return NextResponse.json({error: 'Die Leads konnten nicht aus der Datenbank geladen werden.'}, {status: 503});
   }
+}
+
+export async function DELETE(req:Request){
+ const denied=await guard(req);if(denied)return denied;
+ const input=await req.json().catch(()=>null),id=input?.id;
+ if(!Number.isSafeInteger(id)||id<1||typeof input?.blockRediscovery!=='boolean')return NextResponse.json({error:'Ungültiger Löschauftrag.'},{status:400});
+ await init();const client=await db().connect();
+ try{
+  await client.query('BEGIN');
+  // Discovery takes the same company lock. The exclusion prevents an in-flight
+  // analysis from recreating the company immediately after deletion.
+  const snapshot=await client.query('SELECT name,city,company_key,company_url FROM opportunities WHERE id=$1',[id]);
+  const company=snapshot.rows[0];if(!company){await client.query('ROLLBACK');return NextResponse.json({error:'Firma nicht gefunden.'},{status:404})}
+  const key=company.company_key||companyIdentity(company.name,company.city);
+  await client.query('SELECT pg_advisory_xact_lock($1,hashtext($2))',[4747303,key.split('|')[0]]);
+  const locked=await client.query('SELECT id FROM opportunities WHERE id=$1 FOR UPDATE',[id]);
+  if(!locked.rowCount){await client.query('ROLLBACK');return NextResponse.json({error:'Firma nicht gefunden.'},{status:404})}
+  let host=null;try{host=new URL(company.company_url).hostname.replace(/^www\./,'')}catch{}
+  if(input.blockRediscovery)await client.query('INSERT INTO excluded_companies(company_key,website_host) VALUES($1,$2) ON CONFLICT(company_key) DO UPDATE SET website_host=EXCLUDED.website_host,excluded_at=now()',[key,host]);
+  await client.query('DELETE FROM research_page_analysis WHERE source_url IN (SELECT source_url FROM opportunity_signals WHERE opportunity_id=$1 UNION SELECT source_url FROM company_events WHERE company_id=$1 UNION SELECT source_url FROM opportunities WHERE id=$1)',[id]);
+  await client.query('DELETE FROM activities WHERE opportunity_id=$1',[id]);
+  await client.query('DELETE FROM opportunities WHERE id=$1',[id]);
+  await client.query('COMMIT');return NextResponse.json({ok:true,blocked:input.blockRediscovery});
+ }catch{await client.query('ROLLBACK');return NextResponse.json({error:'Die Firma konnte nicht gelöscht werden.'},{status:503})}finally{client.release()}
 }

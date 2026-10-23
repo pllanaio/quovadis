@@ -1,4 +1,5 @@
-type SearchSettings={cities:string[];skills:string[]};
+import {allocateScoutBudget,DEFAULT_SCOUT_WEIGHTS,SCOUTS,type Scout} from './business-triggers';
+type SearchSettings={cities:string[];skills:string[];scoutWeights?:Record<Scout,number>};
 
 const booleanOperator=new RegExp('(?:^|[^\\p{L}\\p{N}_])(?:OR|AND)(?=$|[^\\p{L}\\p{N}_])','iu');
 const wordCharacter=new RegExp('[\\p{L}\\p{N}]','u');
@@ -82,20 +83,36 @@ export function uniqueQueries(values:unknown[],cities:string[],seen:Set<string>=
  return result;
 }
 
-/** One place and one concrete signal per query; the full default skill set yields eight per city. */
+const templates:Record<Scout,string[]>={
+ external:['IT Dienstleister gesucht','externe IT Betreuung Ausschreibung','IT Support Wartungsvertrag Ausschreibung','IT Outsourcing Dienstleisterwechsel'],
+ business:['Unternehmen neue Niederlassung eröffnet','Unternehmen Übernahme Fusion','Unternehmen neuer Onlineshop','Unternehmen neue Produktionsanlage','Unternehmen neue Tochtergesellschaft','Unternehmen Prozessautomatisierung'],
+ projects:['ERP Einführung Implementierungspartner','IT Projekt Ausschreibung','CRM DMS Einführung Projekt','Cloud Migration geplant','IT Sicherheit Compliance Einführung'],
+ growth:['Unternehmen Standort Erweiterung','Unternehmen wächst neue Mitarbeiter','Unternehmen Expansion neue Teams','Unternehmen vergrößert Betriebsstätte'],
+ hiring:['erster IT Administrator Aufbau','IT Generalist Stellenangebot','IT Allrounder Karriere'],
+};
+const assignments=new Map<string,Scout>();
+export function scoutForQuery(query:string):Scout{
+ const known=assignments.get(query);if(known)return known;
+ if(/stellen|karriere|administrator|generalist|allrounder/i.test(query))return 'hiring';
+ if(/dienstleister|extern|outsourcing|wartungsvertrag|implementierungspartner/i.test(query))return 'external';
+ if(/erp|crm|dms|cloud|ausschreib|migration|security|IT Projekt/i.test(query))return 'projects';
+ if(/wachs|expand|expansion|mitarbeiter|vergröß|vergross/i.test(query))return 'growth';
+ return 'business';
+}
+export function effectiveScoutWeights(settings:SearchSettings):Record<Scout,number>{
+ const configured=settings.scoutWeights||DEFAULT_SCOUT_WEIGHTS;
+ return {...configured,external:settings.skills.includes('providers')||settings.skills.includes('tenders')||settings.skills.includes('social')?configured.external:0,business:settings.skills.includes('business')||settings.skills.includes('news')||settings.skills.includes('social')?configured.business:0,projects:settings.skills.includes('migration')||settings.skills.includes('tenders')?configured.projects:0,growth:settings.skills.includes('growth')?configured.growth:0,hiring:settings.skills.includes('jobs')?configured.hiring:0};
+}
+/** Separate weighted scouts; allocated effort is unrelated to result counts. */
 export function baselineQueries(settings:SearchSettings):string[]{
- const queries:string[]=[];
- const skills=new Set(settings.skills);
- for(const value of settings.cities){
-  const city=whitespace(value);
-  if(!city)continue;
-  const place=city.includes(' ')?`"${city}"`:city;
-  if(skills.has('jobs'))queries.push(`${place} IT Administrator Aufbau`,`${place} IT Stellenangebot Erweiterung`,`${place} IT Generalist gesucht`);
-  if(skills.has('tenders'))queries.push(`${place} IT Ausschreibung`);
-  if(skills.has('migration'))queries.push(`${place} IT Infrastruktur Modernisierung`);
-  if(skills.has('providers'))queries.push(`${place} IT Dienstleister gesucht`);
-  if(skills.has('news')||skills.has('growth'))queries.push(`${place} Unternehmen Digitalisierung Investition`);
-  if(skills.has('social'))queries.push(`site:linkedin.com/posts ${place} IT Unterstützung`);
- }
+ settings={...settings,cities:[...new Map(settings.cities.map(city=>[city.trim().toLocaleLowerCase('de-DE'),city.trim()])).values()]};
+ if(!settings.cities.length)return [];
+ if(assignments.size>1000)assignments.clear();
+ const allocation=allocateScoutBudget(Math.max(10,settings.cities.length*10),effectiveScoutWeights(settings)),lists:Record<string,string[]>={};
+ for(const [scout]of SCOUTS){lists[scout]=[];for(let i=0;i<allocation[scout];i++){
+  const city=settings.cities[i%settings.cities.length],place=city.includes(' ')?`"${city}"`:city,terms=templates[scout][Math.floor(i/settings.cities.length)%templates[scout].length];
+  const query=normalizeQuery(place+' '+terms,settings.cities);if(query){lists[scout].push(query);assignments.set(query,scout)}
+ }}
+ const queries:string[]=[];for(let i=0;i<Math.max(0,...Object.values(lists).map(list=>list.length));i++)for(const [scout]of SCOUTS)if(lists[scout][i])queries.push(lists[scout][i]);
  return uniqueQueries(queries,settings.cities);
 }

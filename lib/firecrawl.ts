@@ -1,6 +1,6 @@
 import {isIP} from 'node:net';
 
-export type SearchHit={url:string;title:string;description:string};
+export type SearchHit={url:string;title:string;description:string;scout?:string};
 export type PageLink={url:string;label:string};
 export type PublicContact={kind:string;label:string;value:string;url:string;sourceUrl:string;quote:string;checkedAt:string};
 export type VerifiedPage={url:string;title:string;text:string;publishedAt:string|null;sourceReliability:'other_web'|'public_portal'|'secondary';checkedAt:string;links?:PageLink[];contacts?:PublicContact[]};

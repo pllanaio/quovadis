@@ -1,3 +1,4 @@
+import type {EventIntelligence,OpportunityCategory} from '../lib/business-triggers';
 export type Finding={url:string;quote:string;insight?:string;kind?:string;publishedAt?:string|null;checkedAt?:string;sourceReliability?:string};
 export type CompanyFact={field:string;value:string;sourceUrl:string;quote:string;group?:'company'|'management'|'financial'|'technology';publishedAt?:string|null;checkedAt?:string;sourceReliability?:string};
 export type BusinessContact={kind:string;label?:string;value:string;url?:string;sourceUrl:string;quote?:string;checkedAt?:string};
@@ -15,7 +16,7 @@ export type ResearchLead={
  need_status?:string;external_readiness?:string;assessment?:Assessment;
 };
 export type Lead=ResearchLead&{
- name:string;city:string;signal:string;summary:string;source_url:string;score:number;
+ name:string;city:string;signal:string;summary:string;source_url:string;score:number;opportunity_category?:OpportunityCategory;it_need_confidence?:number;entry_opportunity_score?:number;external_engagement?:string;event_intelligence?:EventIntelligence|null;
  phone?:string|null;email?:string|null;company_url?:string|null;created_at?:string;
  published_at?:string|null;is_stale?:boolean;chart_eligible?:boolean;last_note_at?:string|null;
  freshness_at?:string|null;stale_at?:string|null;ranking_score?:number;signal_count?:number;

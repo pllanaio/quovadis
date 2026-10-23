@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {testLoader} from './ts-test-loader.mjs';
+const cache=new Map(),calls=[];
+const quote='Die Muster GmbH eröffnet einen neuen Standort in München.';
+const input={name:'Muster GmbH',city:'München',signal:'Neuer Standort eröffnet',summary:'Originalereignis',signalType:'business',sourceUrl:'https://muster.de/news',evidenceQuote:quote,intelligence:{hypotheses:['Standortplanung könnte sinnvoll sein.'],offer:{title:'IT-Konzeption',description:'Arbeitsplatzplanung',hoursMin:5,hoursMax:10}}};
+const settings={model:'selected-main',screeningModel:'cheap-screen',analysisModel:'strong-analysis',reasoningLevel:'high',skills:['business'],searchPrompt:'Business events',serviceOffer:'IT-Konzeption',hourlyRate:100};
+const db={query:async(sql,args)=>{
+ if(sql.startsWith('SELECT analysis'))return {rows:cache.has(args[0])?[{analysis:cache.get(args[0])}]:[]};
+ if(sql.startsWith('INSERT INTO research_page_analysis'))cache.set(args[0],JSON.parse(args[3]));
+ return {rows:[],rowCount:1};
+}};
+const subject=testLoader({'./db':{db:()=>db,init:async()=>{}},'./research-model':{researchModel:async(...args)=>{calls.push(args);return args[5]==='opportunity_analysis'?JSON.stringify({analyses:[{name:input.name,sourceUrl:input.sourceUrl,intelligence:input.intelligence}]}):JSON.stringify([input])},logUsage:async()=>{}}})('lib/research.ts');
+const page={url:input.sourceUrl,text:quote,title:'Originalquelle',links:[],checkedAt:new Date().toISOString()};
+const first=await subject.extractPages(settings,[page]);
+assert.equal(first.length,1);assert.deepEqual(calls.map(c=>c[6]),['cheap-screen','strong-analysis']);assert.equal(first[0].intelligence.modelVersion,'strong-analysis');
+assert.deepEqual(await subject.extractPages(settings,[page]),JSON.parse(JSON.stringify(first)));assert.equal(calls.length,2,'Unchanged originals must not invoke a paid model');
+await subject.extractPages(settings,[{...page,text:quote+' Neue Details.'}]);assert.equal(calls.length,4,'Changed content reanalyzed');
+await subject.extractPages({...settings,hourlyRate:125},[page]);assert.equal(calls.length,6,'Pricing context changes invalidate cache');
+const emptyCalls=calls.length;await subject.extractPages({...settings,skills:[]},[page]);assert.equal(calls.length,emptyCalls+1,'Irrelevant candidates do not invoke the stronger model');
+const logs=[];const model=testLoader({'./db':{db:()=>({query:async(_sql,args)=>logs.push(args)})}})('lib/research-model.ts');
+await model.logUsage({...settings,provider:'openai',inputTokenPrice:2,outputTokenPrice:8},settings.model,'research',{prompt_tokens:1000,completion_tokens:500},true,123);
+assert.equal(logs[0][5],0.006);
+await model.logUsage({...settings,provider:'openai',inputTokenPrice:2,outputTokenPrice:8},'different-model','research',{prompt_tokens:1000},true,100);assert.equal(logs[1][5],null,'Unknown model pricing is never presented as free');
+console.log('Business analysis: cache invalidation, unchanged sources, relevant-only stronger models, configured routing and honest cost logging passed');

@@ -64,6 +64,47 @@ export async function init() {
       detail TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS opportunity_category TEXT;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS it_need_confidence INTEGER;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS entry_opportunity_score INTEGER;
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS external_engagement TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS event_intelligence JSONB;
+    CREATE TABLE IF NOT EXISTS company_events (
+      id BIGSERIAL PRIMARY KEY, company_id BIGINT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+      event_category TEXT NOT NULL, event_description TEXT NOT NULL, source_url TEXT NOT NULL,
+      evidence_quote TEXT NOT NULL, published_at TIMESTAMPTZ, checked_at TIMESTAMPTZ NOT NULL,
+      verification_status TEXT NOT NULL DEFAULT 'verified', content_hash TEXT NOT NULL,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE(company_id,source_url,evidence_quote)
+    );
+    CREATE TABLE IF NOT EXISTS event_opportunities (
+      id BIGSERIAL PRIMARY KEY, event_id BIGINT NOT NULL REFERENCES company_events(id) ON DELETE CASCADE,
+      category TEXT NOT NULL, hypothesis TEXT NOT NULL, evidence_status TEXT NOT NULL DEFAULT 'hypothesis',
+      entry_offer JSONB, it_need_confidence INTEGER NOT NULL, entry_opportunity_score INTEGER NOT NULL,
+      external_engagement TEXT NOT NULL, intelligence JSONB NOT NULL, model_version TEXT NOT NULL,
+      researched_at TIMESTAMPTZ NOT NULL, UNIQUE(event_id,hypothesis)
+    );
+    CREATE TABLE IF NOT EXISTS event_analysis_history (
+      id BIGSERIAL PRIMARY KEY, event_id BIGINT NOT NULL REFERENCES company_events(id) ON DELETE CASCADE,
+      revision_hash TEXT NOT NULL, intelligence JSONB NOT NULL, model_version TEXT NOT NULL,
+      researched_at TIMESTAMPTZ NOT NULL, UNIQUE(event_id,revision_hash)
+    );
+    CREATE INDEX IF NOT EXISTS company_events_company ON company_events(company_id,last_seen_at DESC);
+    CREATE TABLE IF NOT EXISTS excluded_companies (
+      company_key TEXT PRIMARY KEY, website_host TEXT, excluded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS research_page_analysis (
+      cache_key TEXT PRIMARY KEY, source_url TEXT NOT NULL, content_hash TEXT NOT NULL,
+      analysis JSONB NOT NULL, model_version TEXT NOT NULL, analyzed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS research_page_analysis_age ON research_page_analysis(analyzed_at);
+    CREATE TABLE IF NOT EXISTS ai_usage (
+      id BIGSERIAL PRIMARY KEY, provider TEXT NOT NULL, model TEXT NOT NULL, operation TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+      estimated_cost_usd NUMERIC, succeeded BOOLEAN NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),config JSONB NOT NULL);
     CREATE TABLE IF NOT EXISTS admin_user(id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL,password_hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,expires_at TIMESTAMPTZ NOT NULL);

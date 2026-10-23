@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {hasEvidenceQuote,companyNameMentioned,locationMentioned,classifyEvidencePriority,validateEvidenceCandidate} from '../lib/research-evidence.ts';
+import {testLoader} from './ts-test-loader.mjs';
+const {hasEvidenceQuote,companyNameMentioned,locationMentioned,classifyEvidencePriority,validateEvidenceCandidate}=testLoader()('lib/research-evidence.ts');
 
 const source={kind:'website',url:'https://jobs.example.com/it-stelle'};
 const quote='Planung und Modernisierung unserer IT-Infrastruktur';
