@@ -1,3 +1,4 @@
+import {testLoader} from './ts-test-loader.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -14,7 +15,7 @@ const compile=(name,require,globals={})=>{
  runInNewContext(code,{module,exports:module.exports,require,AbortSignal,URL,Date,Error,...globals});
  return module.exports;
 };
-const queries=compile('research-queries',nativeRequire),grounding=compile('research-grounding',nativeRequire),diagnostics=compile('research-diagnostics',nativeRequire);
+const modules=testLoader(),business=modules('lib/business-triggers.ts'),queries=modules('lib/research-queries.ts'),grounding=modules('lib/research-grounding.ts'),diagnostics=modules('lib/research-diagnostics.ts');
 class WebSearchUnavailableError extends Error{
  code='WEB_SEARCH_UNAVAILABLE';
  constructor(diagnostics){super('Websuche derzeit nicht verfügbar.');this.diagnostics=diagnostics}
@@ -36,13 +37,15 @@ async function scenario(search){
  }};
  const subject=compile('research',id=>{
   if(id.startsWith('node:'))return nativeRequire(id);
+  if(id==='./business-triggers')return business;
+  if(id==='./research-model')return {logUsage:async()=>{},researchModel:async(_settings,system)=>{if(system.startsWith('Du planst')||system.startsWith('Du steuerst')){plans++;return JSON.stringify({queries:['Dachau IT Aufbau','München IT Administrator Aufbau']})}return '[]'}};
   if(id==='./research-queries')return queries;
   if(id==='./research-grounding')return grounding;
   if(id==='./research-diagnostics')return diagnostics;
   if(id==='./db')return {db:()=>database,init:async()=>{}};
   if(id==='./settings')return {getSettings:async()=>settings};
   if(id==='./web-search')return {WebSearchUnavailableError,searchWeb:async(key,query,limit,options)=>{
-   assert.equal(options.ai,settings,'Discovery must pass existing AI configuration to the search fallback');
+   assert.equal(options.ai.model,settings.model);assert.equal(options.ai.openaiKey,settings.openaiKey);
    requested.push(query);return search(requested.length,options);
   },scrapePage:async()=>{scraped++;return {...hit,text:'Muster GmbH plant den Aufbau der IT in München. '.repeat(8),checkedAt:new Date().toISOString(),links:[]}}};
   return {};
@@ -79,20 +82,20 @@ assert.equal(healthy.result.status,'completed','Healthy empty searches are valid
 assert.equal(healthy.result.imported,0);
 assert.equal(healthy.result.errors.length,0);
 assert.equal(healthy.plans,2);
-assert.equal(healthy.requested.length,25,'24 focused baselines and one novel generated query; second-round duplicates are skipped');
+assert.equal(healthy.requested.length,32,'30 focused baselines and two novel generated queries; second-round duplicates are skipped');
 assert.equal(new Set(healthy.requested).size,healthy.requested.length);
 
 const mixed=await scenario(async(index,options)=>{if(index===1){options.onDiagnostic(empty);return []}throw Error('Temporary upstream failure')});
 assert.equal(mixed.result.status,'failed','One empty success must not hide failures from every other query');
 assert.equal(mixed.terminal.stage,'Unvollständig');
-assert.match(mixed.result.errors[0],/1 von 25/);
+assert.match(mixed.result.errors[0],/1 von 32/);
 
 const queryFailure=await scenario(async(index,options)=>{if(index===2){const error=Error('No sources for this query');error.code='WEB_SEARCH_QUERY_FAILED';throw error}options.onDiagnostic(empty);return []});
-assert.equal(queryFailure.requested.length,25,'An isolated query failure must not open the provider circuit');assert.equal(queryFailure.plans,2);assert.match(queryFailure.result.errors[0],/24 von 25/);
+assert.equal(queryFailure.requested.length,32,'An isolated query failure must not open the provider circuit');assert.equal(queryFailure.plans,2);assert.match(queryFailure.result.errors[0],/31 von 32/);
 
 const degraded=await scenario(async(index,options)=>{options.onDiagnostic({...unavailable,status:'degraded',message:'Eine Suchmaschine ist nicht verfügbar; andere haben geantwortet.'});return []});
 assert.equal(degraded.result.status,'completed','Partial engine availability is not a total provider outage');
-assert.equal(degraded.requested.length,25);
+assert.equal(degraded.requested.length,32);
 assert.match(degraded.result.errors[0],/eingeschränkter Suchmaschinen-Abdeckung/);
 assert.ok(degraded.result.errors.length<=3);
 

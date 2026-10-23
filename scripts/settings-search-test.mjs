@@ -1,3 +1,4 @@
+import {testLoader} from './ts-test-loader.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -11,6 +12,7 @@ function load(path,dependencies){
 }
 let stored={};
 const settings=load('../lib/settings.ts',{
+ './business-triggers':testLoader()('lib/business-triggers.ts'),
  './db':{init:async()=>{},db:()=>({query:async(sql,values)=>{if(sql.startsWith('SELECT'))return {rows:[{config:structuredClone(stored)}]};stored=structuredClone(values[0]);return {rows:[]}}})},
  './discovery-prompt':{DEFAULT_DISCOVERY_PROMPT:'Find verified IT opportunities with original evidence sources.'},
  './schedule.mjs':{validTime,validTimezone},

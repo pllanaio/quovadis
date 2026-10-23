@@ -1,7 +1,8 @@
 import {isIP} from 'node:net';
+import {classifyBusinessEvent} from './business-triggers';
 
 export type EvidenceSource={kind:'website'|'mcp';url:string};
-export type EvidenceCandidate={name:string;city:string;signal:string;signalType:string;priority:'A'|'B'|'C';summary:string;sourceUrl:string;evidenceQuote:string;companyUrl?:string;score:number};
+export type EvidenceCandidate={name:string;city:string;signal:string;signalType:string;priority:'A'|'B'|'C';summary:string;sourceUrl:string;evidenceQuote:string;companyUrl?:string;score:number;eventAnalysis?:unknown};
 
 /** Only layout and Unicode representation are normalized for literal quotes. */
 export function normalizeEvidenceText(value:string){
@@ -81,11 +82,11 @@ function evidenceContexts(text:string,quote:string){
 export function validateEvidenceCandidate(raw:Record<string,unknown>,source:EvidenceSource,text:string,skills:string[]):EvidenceCandidate[]{
  const field=(key:string)=>typeof raw[key]==='string'?raw[key].trim():'';
  const name=field('name'),city=field('city'),signal=field('signal'),summary=field('summary'),sourceUrl=field('sourceUrl'),evidenceQuote=field('evidenceQuote'),signalType=field('signalType');
- if(name.length<2||name.length>255||city.length<2||city.length>100||signal.length<8||evidenceQuote.length<12||evidenceQuote.length>1000||!skills.includes(signalType)||!sameOriginal(source,text,sourceUrl)||!hasEvidenceQuote(text,evidenceQuote)||!IT_TERMS.test(evidenceQuote))return [];
+ if(name.length<2||name.length>255||city.length<2||city.length>100||signal.length<8||evidenceQuote.length<12||evidenceQuote.length>1000||!skills.includes(signalType)||!sameOriginal(source,text,sourceUrl)||!hasEvidenceQuote(text,evidenceQuote)||!classifyBusinessEvent(evidenceQuote,signalType))return [];
  const contexts=evidenceContexts(text,evidenceQuote);
  if(!contexts.some(context=>companyNameMentioned(context,name))||!locationMentioned(text,city))return [];
  let secondary=false;try{secondary=SECONDARY_HOST.test(new URL(sourceUrl).hostname)}catch{}
  if(secondary&&!contexts.some(context=>companyNameMentioned(context,name)&&locationMentioned(context,city)))return [];
  const score=Number(raw.score);
- return [{name,city,signal:signal.slice(0,500),summary:summary.slice(0,2000),sourceUrl:new URL(sourceUrl).href,evidenceQuote,companyUrl:companyWebsite(source,text,raw.companyUrl,name),signalType,priority:classifyEvidencePriority(evidenceQuote,signalType),score:Number.isFinite(score)?Math.min(100,Math.max(0,score)):0}];
+ return [{name,city,signal:signal.slice(0,500),summary:summary.slice(0,2000),sourceUrl:new URL(sourceUrl).href,evidenceQuote,companyUrl:companyWebsite(source,text,raw.companyUrl,name),signalType,priority:classifyEvidencePriority(evidenceQuote,signalType),score:Number.isFinite(score)?Math.min(100,Math.max(0,score)):0,eventAnalysis:raw.intelligence}];
 }

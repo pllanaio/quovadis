@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {testLoader} from './ts-test-loader.mjs';
+let denied=false,fail=false,queries=[],released=0;
+const client={query:async(sql,args)=>{queries.push([sql,args]);if(fail&&sql.startsWith('DELETE FROM activities'))throw Error('database unavailable');if(sql.startsWith('SELECT name'))return {rows:args[0]===404?[]:[{name:'Muster GmbH',city:'München',company_key:'muster|muenchen',company_url:'https://www.muster.de'}]};return {rowCount:1,rows:[{id:1}]}},release:()=>released++};
+const route=testLoader({'@/lib/auth':{guard:async()=>denied?Response.json({error:'Nicht angemeldet'},{status:401}):null},'@/lib/db':{init:async()=>{},db:()=>({connect:async()=>client})}})('app/api/opportunities/route.ts');
+const request=body=>new Request('http://localhost/api/opportunities',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+denied=true;assert.equal((await route.DELETE(request({id:1,blockRediscovery:true}))).status,401);assert.equal(queries.length,0);denied=false;
+for(const body of [{id:0},{id:1,blockRediscovery:'true'},{id:'1',blockRediscovery:true},{id:1.5,blockRediscovery:false}])assert.equal((await route.DELETE(request(body))).status,400);
+assert.equal(queries.length,0,'Invalid requests never start a transaction');
+assert.equal((await route.DELETE(request({id:404,blockRediscovery:true}))).status,404);assert.equal(queries.at(-1)[0],'ROLLBACK');queries=[];
+assert.equal((await route.DELETE(request({id:1,blockRediscovery:true}))).status,200);
+assert.equal(queries[0][0],'BEGIN');assert.equal(queries.at(-1)[0],'COMMIT');
+assert.ok(queries.some(([sql,args])=>sql.startsWith('INSERT INTO excluded_companies')&&args[1]==='muster.de'));
+assert.ok(queries.findIndex(([sql])=>sql.startsWith('DELETE FROM activities'))<queries.findIndex(([sql])=>sql.startsWith('DELETE FROM opportunities')));
+assert.ok(queries.filter(([sql])=>sql.startsWith('DELETE')).every(([,args])=>args[0]===1),'All deletes are scoped to the requested company');
+queries=[];await route.DELETE(request({id:1,blockRediscovery:false}));assert.ok(!queries.some(([sql])=>sql.startsWith('INSERT INTO excluded_companies')));
+queries=[];fail=true;assert.equal((await route.DELETE(request({id:1,blockRediscovery:true}))).status,503);assert.equal(queries.at(-1)[0],'ROLLBACK');assert.equal(released,4);
+console.log('Deletion API: authentication, input validation, missing IDs, advisory lock, scoped deletion, rediscovery opt-out and transaction rollback passed');

@@ -7,6 +7,8 @@ export type NativeSearchSettings={
  anthropicKey?:string;
  nativeWebSearch?:boolean;
  searchBackend?:'auto'|'native';
+ reasoningLevel?:'default'|'low'|'medium'|'high';
+ onUsage?:(usage:Record<string,unknown>|undefined,succeeded:boolean,durationMs:number)=>Promise<void>;
 };
 
 type SearchErrorCode='disabled'|'missing_api_key'|'invalid_model'|'invalid_query'|'authentication_error'|'permission_denied'|'model_unavailable'|'quota_exceeded'|'rate_limited'|'upstream_error'|'invalid_request'|'timeout'|'network_error'|'invalid_response'|'incomplete_response'|'tool_failed'|'no_search_tool'|'sources_missing';
@@ -66,7 +68,7 @@ function apiError(settings:NativeSearchSettings,response:Response,data:Record<st
 }
 
 async function request(settings:NativeSearchSettings,url:string,headers:Record<string,string>,body:Record<string,unknown>){
- let response:Response;
+ const started=Date.now();let response:Response;
  try{
   response=await fetch(url,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});
  }catch(error){throw new NativeSearchError(settings,error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?'timeout':'network_error')}
@@ -77,6 +79,7 @@ async function request(settings:NativeSearchSettings,url:string,headers:Record<s
   if(!response.ok)throw apiError(settings,response,null);
   throw new NativeSearchError(settings,'invalid_response',response.status);
  }
+ await settings.onUsage?.(object(data?.usage)||undefined,response.ok&&!data?.error,Date.now()-started);
  if(!response.ok||data?.error||data?.type==='error')throw apiError(settings,response,data);
  if(!data)throw new NativeSearchError(settings,'invalid_response',response.status);
  return data;
@@ -92,6 +95,7 @@ async function openaiSearch(settings:NativeSearchSettings,query:string,limit:num
  const data=await request(settings,'https://api.openai.com/v1/responses',{authorization:'Bearer '+settings.openaiKey},{
   // Reasoning tokens share this budget; a tiny cap can interrupt an otherwise successful search.
   model:settings.model,store:false,max_output_tokens:4096,max_tool_calls:1,
+ ...(/^(o\d|gpt-[5-9])/.test(settings.model)&&settings.reasoningLevel&&settings.reasoningLevel!=='default'?{reasoning:{effort:settings.reasoningLevel}}:{}),
   tools:[{type:'web_search',search_context_size:'low',external_web_access:true,user_location:{type:'approximate',country:'DE'}}],
   tool_choice:'required',include:['web_search_call.action.sources'],
   instructions:'Führe genau eine Websuche zur Suchanfrage aus. Suche öffentlich zugängliche Originalseiten in Deutschland. Antworte anschließend kurz. Nutze keine weiteren Werkzeuge und erfinde keine Quellen.',

@@ -1,3 +1,4 @@
+import {testLoader} from './ts-test-loader.mjs';
 import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
@@ -6,26 +7,23 @@ import ts from 'typescript';
 
 const scratch=mkdtempSync(join(process.cwd(),'.research-test-'));
 try{
- const path=join(scratch,'queries.cjs');
- writeFileSync(path,ts.transpileModule(readFileSync(new URL('../lib/research-queries.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText);
- const {baselineQueries,normalizeQuery,uniqueQueries}=createRequire(import.meta.url)(path);
+ const {baselineQueries,normalizeQuery,uniqueQueries,scoutForQuery}=testLoader()('lib/research-queries.ts');
  const cities=['München','Augsburg','Landsberg am Lech'];
  const skills=['jobs','tenders','migration','providers','growth','social','news'];
  const baseline=baselineQueries({cities,skills});
- assert.equal(baseline.length,24,'The default skill mix must cover eight focused searches per city');
- assert.ok(baseline.includes('München IT Administrator Aufbau'));
- assert.ok(baseline.includes('Augsburg IT Infrastruktur Modernisierung'));
- assert.ok(baseline.includes('"Landsberg am Lech" IT Ausschreibung'));
- assert.ok(baseline.includes('site:linkedin.com/posts München IT Unterstützung'));
+ assert.equal(baseline.length,30,'Thirty focused queries across five weighted scouts');
+ const counts=Object.fromEntries(['external','business','projects','growth','hiring'].map(scout=>[scout,baseline.filter(q=>scoutForQuery(q)===scout).length]));
+ assert.deepEqual(counts,{external:8,business:9,projects:6,growth:4,hiring:3});
  for(const query of baseline){
   assert.equal(normalizeQuery(query,cities),query);
   assert.ok(query.length<=160&&query.split(' ').length<=16);
   assert.ok((query.match(/"/g)||[]).length<=2);
   assert.equal(cities.filter(city=>query.includes(city)).length,1);
  }
- assert.deepEqual(baselineQueries({cities:['München'],skills:['tenders']}),['München IT Ausschreibung']);
+ assert.ok(baselineQueries({cities:['München'],skills:['tenders']}).every(q=>['external','projects'].includes(scoutForQuery(q))));
+ assert.ok(baselineQueries({cities:['München'],skills:['social']}).length>0,'Social-only settings retain search coverage');
  assert.deepEqual(baselineQueries({cities:['München'],skills:[]}),[]);
- assert.equal(baselineQueries({cities:['München',' münchen '],skills}).length,8,'Repeated city entries must not repeat baseline searches');
+ assert.equal(baselineQueries({cities:['München',' münchen '],skills}).length,10,'Repeated city entries must not repeat searches');
 
  assert.equal(normalizeQuery(' \tMünchen\u00a0 IT\n Aufbau  ',cities),'München IT Aufbau');
  assert.equal(normalizeQuery('Mu\u0308nchen IT Aufbau',cities),'München IT Aufbau');

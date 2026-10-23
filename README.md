@@ -161,3 +161,29 @@ Der Begleiter kann Änderungen an Suchprompt, Recherche-Skills, Quellen, täglic
 Unter **Einstellungen → Verbindungen → GitHub** werden Organisation/Owner, Repository, Basis-Branch und ein GitHub-Token hinterlegt. Ein Fine-grained Personal Access Token benötigt für das Ziel-Repository **Contents: Read and write** und **Pull requests: Read and write**. Der Token wird verschlüsselt gespeichert und nicht an den Chat gesendet.
 
 Wenn eine Quellcodeänderung gewünscht ist, schlägt der Begleiter eine konkrete Aufgabe vor. **Entwurf vorbereiten** liest geeignete Textdateien aus dem konfigurierten Repository und erzeugt einen begrenzten Code-Diff. **Diff prüfen** zeigt den vollständigen Entwurf. Erst **Draft-PR erstellen** legt einen Branch und einen GitHub Pull Request an. Der Basis-Branch darf sich zwischen Entwurf und PR nicht verändert haben; andernfalls muss ein neuer Entwurf erzeugt werden. Der PR wird nicht automatisch gemergt. Der Entwurf kann bis zu vier kleine Textdateien ändern und fügt keine neuen Paket-Abhängigkeiten hinzu. Größere Aufgaben sollten in mehrere Entwürfe aufgeteilt werden.
+
+## Business Trigger Engine
+
+Die fünf Scouts recherchieren unabhängig nach externer IT-Nachfrage, Geschäftsanlässen, IT-Projekten, Wachstum und IT-Stellen. Unter **Einstellungen → Recherche** lassen sich die Budgetanteile ändern (zusammen 100 %; Standard 25/30/20/15/10). Die Anteile steuern Suchanfragen und gelesene Seiten, keine Ergebnisquote. Städte und Radius bleiben verbindlich. Quellenzugänge müssen erreichbar sein; eine bestimmte tägliche Trefferzahl wird nicht zugesichert.
+
+Im Dashboard filtert **Opportunity-Art** nach Anlass, Einstiegsprojekten mit einer geschätzten Preisspanne im Bereich 500–2.000 € und hohem Betreuungspotenzial. Im Dossier stehen belegte Ereignisse mit Originalquelle, getrennt gekennzeichnete KI-Hypothesen, Einstiegsangebote und offene Fragen. Allgemeiner Score, **IT Need Confidence**, **Entry Opportunity Score** und externe Beauftragbarkeit sind getrennte Werte. Der Entry Score ist keine Kaufwahrscheinlichkeit. Wachstum allein bestätigt keinen IT-Bedarf, interne Stellen keinen externen Auftrag. Ein bereits ausgewählter Partner senkt die Einstiegschance.
+
+Angebote sind Kalkulationsideen: Aufwand × konfigurierter Netto-Stundensatz (Standard 100 €/h), kein bekanntes Kundenbudget. Unternehmensereignisse, daraus abgeleitete Leistungen und Analyseversionen werden getrennt gespeichert. Die Migration ergänzt bestehende Tabellen; IDs, Notizen und Kontaktverläufe bleiben erhalten.
+
+Unter **Einstellungen → KI & Quellen** können optional Vorfilter- und Analysemodell sowie das OpenAI-Reasoning-Level gewählt werden. Leere Modellfelder nutzen das konfigurierte Hauptmodell. Das stärkere Modell analysiert nur zuvor belegte relevante Ereignisse. Bei unverändertem Quellentext und identischen Analyseeinstellungen wird die Seitenanalyse wiederverwendet; Änderungen an Angebot, Stundensatz oder Modell lösen eine neue Analyse aus. Cacheeinträge werden nach 30 Tagen bereinigt. Tokenverbrauch und Fehler werden protokolliert. Kosten sind Schätzungen anhand der selbst eingetragenen Hauptmodellpreise; andere Modelle und Suchgebühren bleiben als nicht bepreist kenntlich.
+
+### Firmen löschen
+
+Im **Firmendossier → Überblick → Firma löschen** wird nach Bestätigung die Firma einschließlich Notizen, Kontaktverlauf, Signalen, Ereignissen, Analysehistorie und zugehörigem Seitenanalysecache entfernt. Standardmäßig bleibt ein minimaler Ausschlusseintrag (Firmenkennung und gegebenenfalls Website), damit der nächste Suchlauf sie nicht wieder anlegt. Diese Option kann vor dem Löschen abgewählt werden. Unter **Einstellungen → Recherche → Ausgeschlossene Firmen → Wieder zulassen** lässt sich der Ausschluss aufheben. Die Löschung ist endgültig; ein Ausschluss ersetzt keine Sicherung.
+
+### Prüfungen
+
+```bash
+# Unit- und Regressionstests, ohne bezahlte KI-Aufrufe
+for test in scripts/*test.mjs; do node "$test" || exit 1; done
+npm run build
+# Browser gegen laufende Instanz; HTTP-Antworten sind isolierte Fixtures, keine Datenbank-Leads
+UI_TEST_URL=http://127.0.0.1:3000 node tests/ui-smoke.mjs
+```
+
+`scripts/business-db-integration.mjs` prüft Migration und Löschung mit echtem PostgreSQL. Es akzeptiert ausschließlich eine eigens angelegte, leere Datenbank namens `quovadis_business_test` über `DATABASE_URL`; diese danach entfernen. Ein echter kostenpflichtiger Recherchelauf benötigt die eigenen gespeicherten API-Zugänge.

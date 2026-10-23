@@ -1,3 +1,5 @@
+export function companyIdentity(name:string,city:string){const clean=(value:string)=>value.toLocaleLowerCase('de-DE').replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/\b(gmbh|ag|kg|ug|mbh|e v|ev)\b/g,'').replace(/[^a-z0-9]+/g,' ').trim();return clean(name)+'|'+clean(city)}
+
 export const STALE_AFTER_DAYS = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

@@ -1,3 +1,4 @@
+import {testLoader} from '../scripts/ts-test-loader.mjs';
 import {chromium} from '@playwright/test';
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
@@ -19,6 +20,9 @@ const items=[
  {id:2,name:'Beispiel Logistik GmbH',city:'Augsburg',signal:'Modernisierung der IT-Infrastruktur',summary:'Projekt für Netzwerk und Backup.',score:72,source_url:'https://example.net/jobs',research_status:'pending',created_at:daysAgo(1),stale_at:daysAgo(-9),is_stale:false,chart_eligible:true},
  {id:3,name:'Ruhende Beispiel GmbH',city:'Starnberg',signal:'Cloud-Migration ausgeschrieben',summary:'Älterer dokumentierter Bedarf.',score:95,source_url:'https://example.com/projekt',research_status:'complete',created_at:daysAgo(15),stale_at:daysAgo(5),is_stale:true,chart_eligible:false},
 ];
+const intelligence=testLoader()('lib/business-triggers.ts').buildEventIntelligence(items[0].evidence_quote,'jobs',{hypotheses:['Eine ergänzende Unterstützung beim Aufbau könnte sinnvoll sein.'],offer:{title:'Microsoft-365-Bestandsaufnahme',description:'Begrenztes Einstiegsprojekt als Gesprächsangebot.',benefit:'Planungsgrundlage',scope:'Analyse und Maßnahmenplan',hoursMin:5,hoursMax:12,monthlyPotential:'high'}},{hourlyRate:100,serviceOffer:config.serviceOffer,model:config.model});
+Object.assign(items[0],{opportunity_category:intelligence.category,it_need_confidence:intelligence.itNeedConfidence,entry_opportunity_score:intelligence.entryOpportunityScore,event_intelligence:intelligence});
+let deletes=0;
 const activities=[];
 function overview(){const active=items.filter(item=>!item.is_stale);return {demo:false,items,stats:{total:3,active:active.length,stale:3-active.length,highMatch:active.filter(item=>item.score>=80).length,researched:2,pending:1,contactable:1,newToday:0,averageScore:80},charts:{scoreBands:[{label:'Hohe Passung',color:'green',count:active.filter(item=>item.score>=80).length},{label:'Mittlere Passung',color:'amber',count:1},{label:'Geringe Passung',color:'red',count:0}],cities:[{city:'München',count:1},{city:'Augsburg',count:1}]},latestRun:{id:1,status:'completed',stage:'Recherche abgeschlossen',started_at:now,finished_at:now,searched:31,discovered:214,verified:60,imported:12,rejected:35},limit:500}}
 await page.route('**/api/**',async route=>{
@@ -26,7 +30,10 @@ await page.route('**/api/**',async route=>{
  let json={};
  if(path==='/api/auth')json={authenticated:true,setup:false};
  else if(path==='/api/settings'){if(req.method()==='PUT')config={...config,...req.postDataJSON()};json=config}
- else if(path==='/api/opportunities')json=overview();
+ else if(path==='/api/opportunities'){if(req.method()==='DELETE'){const body=req.postDataJSON();assert.equal(body.blockRediscovery,true);deletes++;items.splice(items.findIndex(item=>item.id===body.id),1);json={ok:true,blocked:true}}else json=overview()}
+ else if(path==='/api/opportunities/events')json={events:[{id:10,event_description:items[0]?.signal,evidence_quote:items[0]?.evidence_quote,source_url:'https://example.org/karriere',verification_status:'verified',published_at:null,checked_at:now,opportunities:[{id:11,hypothesis:intelligence.hypotheses[0].statement,intelligence}]}]};
+ else if(path==='/api/opportunities/exclusions')json={items:[]};
+ else if(path==='/api/research/usage')json={summary:{calls:2,input_tokens:1000,output_tokens:500,estimated_cost_usd:null,unpriced_calls:2}};
  else if(path==='/api/research')json=req.method()==='POST'?{queued:true,run:{id:2,status:'queued'}}:{runs:[overview().latestRun]};
  else if(path==='/api/activities'){if(req.method()==='POST'){const entry=req.postDataJSON();activities.push({...entry,id:1,created_at:now});const lead=items.find(item=>item.id===Number(entry.id));if(entry.note.trim()){lead.is_stale=false;lead.chart_eligible=true;lead.stale_at=daysAgo(-10)}json={ok:true,refreshesRanking:!!entry.note.trim()}}else json={items:activities}}
  else if(path==='/api/opportunities/signals')json={signals:[{id:1,source_url:'https://example.org/karriere',evidence_quote:items[0].evidence_quote,signal:items[0].signal,category:'jobs',priority:'A',source_reliability:'first_party',published_at:null,last_checked_at:now,status:'active'}],events:[]};
@@ -39,9 +46,14 @@ try{
  await page.getByRole('button',{name:'Dossier öffnen: Beispielfirma Industrie GmbH'}).waitFor();
  assert.equal(await page.getByText('Ruhende Beispiel GmbH',{exact:true}).count(),0,'Stale lead excluded from dashboard');
  await page.screenshot({path:output+'/dashboard.png',fullPage:true,animations:'disabled'});
+ await page.getByLabel('Opportunity-Art',{exact:true}).selectOption('INTERNAL_HIRING_ONLY');
+ assert.equal(await page.getByRole('button',{name:'Dossier öffnen: Beispiel Logistik GmbH'}).count(),0);
+ await page.getByLabel('Opportunity-Art',{exact:true}).selectOption('all');
  await page.getByRole('button',{name:'Dossier öffnen: Beispielfirma Industrie GmbH'}).click();
  await page.getByRole('dialog').waitFor();
  await page.getByRole('heading',{name:'Beispielfirma Industrie GmbH',exact:true}).waitFor();
+ await page.getByText('Microsoft-365-Bestandsaufnahme',{exact:true}).first().waitFor();
+ await page.getByText('KI-Hypothese · nicht bestätigt',{exact:true}).first().waitFor();
  assert.equal(await page.getByRole('link',{name:'Anrufen',exact:true}).getAttribute('href'),'tel:+4989123456');
  await page.screenshot({path:output+'/dossier.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:'Mit KI besprechen',exact:true}).click();
@@ -98,6 +110,18 @@ try{
  await page.getByRole('tab',{name:'Kontakte & Firma'}).click();
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Mobile dossier must not overflow horizontally');
  await page.screenshot({path:output+'/mobile-dossier.png',animations:'disabled'});
+ await page.getByRole('tab',{name:'Überblick',exact:true}).click();
+ await page.getByRole('button',{name:'Firma löschen',exact:true}).click();
+ await page.getByRole('heading',{name:'Firma endgültig löschen?'}).waitFor();
+ await page.getByRole('button',{name:'Abbrechen',exact:true}).click();assert.equal(deletes,0,'Cancel must not delete anything');
+ await page.getByRole('button',{name:'Firma löschen',exact:true}).click();
+ assert.equal(await page.getByRole('checkbox',{name:'Nicht erneut automatisch erfassen'}).isChecked(),true);
+ await page.getByRole('button',{name:'Endgültig löschen',exact:true}).click();
+ await page.getByRole('button',{name:'Dossier öffnen: Beispielfirma Industrie GmbH'}).waitFor({state:'detached'});assert.equal(deletes,1);
+ await page.evaluate(()=>localStorage.setItem('quovadis-theme','dark'));await page.reload();await page.getByRole('heading',{name:'Dein Opportunity Radar'}).waitFor();
+ assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(0, 0, 0)','Dark mode is black');
+ for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'No overflow at '+width)}
+ await page.screenshot({path:output+'/business-dark.png',fullPage:true,animations:'disabled'});
  assert.deepEqual(errors,[],'No browser runtime errors');
  const login=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce',locale:'de-DE'});
  await login.route('**/api/auth',route=>route.fulfill(route.request().method()==='POST'?{status:401,json:{error:'Benutzername oder Passwort stimmt nicht.'}}:{json:{authenticated:false,setup:false}}));
