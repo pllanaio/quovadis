@@ -27,7 +27,7 @@ try{
  assert.equal((await triggerRoute.DELETE(new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({ids:[triggerId]})}))).status,200);
  assert.equal(await engine.saveSignal(lead,page,settings),true,'Deleted companies may be discovered again');
  const rediscovered=await database.query("SELECT id FROM opportunities WHERE name='Trigger Test GmbH'");assert.equal((await triggerRoute.DELETE(new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({ids:[Number(rediscovered.rows[0].id)]})}))).status,200);
- const row=await database.query("INSERT INTO opportunities(name,city,signal,source_url,company_url,company_key) VALUES('Delete Test GmbH','München','Standorteröffnung','https://delete.example.org/event','https://delete.example.org','delete test|muenchen') RETURNING id");const id=Number(row.rows[0].id);
+ const row=await database.query("INSERT INTO opportunities(name,city,signal,source_url,company_url,company_key) VALUES('Delete Test GmbH','München','Standorteröffnung','https://delete.example.org/event','https://delete.example.org','delete test|muenchen') RETURNING id");const id=row.rows[0].id;assert.equal(typeof id,'string','Use the real PostgreSQL BIGSERIAL transport type');
  await database.query("INSERT INTO activities(opportunity_id,kind,note) VALUES($1,'note','Nur Testdaten')",[id]);
  const signal=await database.query("INSERT INTO opportunity_signals(opportunity_id,source_url,evidence_quote,signal,category,priority,source_reliability) VALUES($1,'https://delete.example.org/event','Standort eröffnet','Standorteröffnung','business','C','first_party') RETURNING id",[id]);
  await database.query("INSERT INTO opportunity_signal_events(signal_id,kind) VALUES($1,'detected')",[signal.rows[0].id]);
@@ -37,8 +37,9 @@ try{
  await database.query("INSERT INTO research_page_analysis(cache_key,source_url,content_hash,analysis,model_version) VALUES('fixture','https://delete.example.org/event','fixture','[]','test')");
  const mocked=testLoader({'@/lib/auth':{guard:async()=>null},'@/lib/db':{db:()=>database,init:schema.init}});
  const other=await database.query("INSERT INTO opportunities(name,city,signal,source_url) VALUES('Other Delete Test','Augsburg','ERP-Einführung','https://other-delete.example.org') RETURNING id");
- const route=mocked('app/api/opportunities/route.ts'),request=new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({ids:[id,Number(other.rows[0].id)]})});
- assert.equal((await route.DELETE(request)).status,200);
+ const extra=await database.query("INSERT INTO opportunities(name,city,signal,source_url) SELECT 'Bulk Test '||n,'München','Standorteröffnung','https://bulk.example.org/'||n FROM generate_series(1,70) n RETURNING id");
+ const route=mocked('app/api/opportunities/route.ts'),request=new Request('http://localhost/api/opportunities',{method:'DELETE',body:JSON.stringify({ids:[id,other.rows[0].id,...extra.rows.map(row=>row.id)]})});
+ const deleted=await route.DELETE(request);assert.equal(deleted.status,200);assert.equal((await deleted.json()).deleted,72,'Delete 72 real PostgreSQL string IDs in one batch');
  for(const table of ['activities','opportunity_signals','opportunity_signal_events','company_events','event_opportunities','event_analysis_history','research_page_analysis'])assert.equal((await database.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n,0,table+' fully removed');
  assert.equal((await database.query('SELECT count(*)::int AS n FROM opportunities')).rows[0].n,1,'Unrelated legacy company retained');
  console.log('PostgreSQL integration: legacy migration preserved IDs/data, repeated migration safe, all deletion cascades/cache cleanup scoped, bulk selection and future rediscovery passed');

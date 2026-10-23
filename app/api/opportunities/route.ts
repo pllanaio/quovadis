@@ -53,14 +53,21 @@ export async function GET(req: Request) {
   }
 }
 
+// PostgreSQL BIGSERIAL values arrive as strings. Keep them lossless, including
+// IDs above JavaScript's safe integer range, and reject non-decimal input.
+function deletionId(value: unknown): string | null {
+ if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+ if (typeof value !== 'string' || !/^[1-9][0-9]{0,18}$/.test(value)) return null;
+ return BigInt(value) <= BigInt('9223372036854775807') ? value : null;
+}
 export async function DELETE(req: Request) {
  const denied = await guard(req); if (denied) return denied;
  const input = await req.json().catch(() => null);
  const requested = input?.ids ?? (input?.id === undefined ? null : [input.id]);
- if (!Array.isArray(requested) || !requested.length || requested.length > 500 || requested.some(id => !Number.isSafeInteger(id) || id < 1)) {
+ if (!Array.isArray(requested) || !requested.length || requested.length > 500 || requested.some(id => deletionId(id) === null)) {
   return NextResponse.json({error: 'Bitte wähle 1 bis 500 Firmen zum Löschen aus.'}, {status: 400});
  }
- const ids = [...new Set<number>(requested)].sort((a,b) => a-b);
+ const ids = [...new Set<string>(requested.map(id => deletionId(id)!))].sort((a,b) => BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0);
  await init(); const client = await db().connect();
  try {
   await client.query('BEGIN');
