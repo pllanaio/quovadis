@@ -198,29 +198,29 @@ function sourceFailure(error:unknown):SourceReadError {
  if(code==='ECONNREFUSED')return new SourceReadError('network','Originalseite hat die Verbindung abgelehnt.');
  return new SourceReadError('transient','Verbindung zur Originalseite ist fehlgeschlagen oder wurde unterbrochen.');
 }
-async function fetchOriginal(url:URL,signal?:AbortSignal):Promise<Response>{
- for(let attempt=0;attempt<2;attempt++){
+async function fetchOriginal(url:URL,signal?:AbortSignal,singleAttempt=false):Promise<Response>{
+ for(let attempt=0;attempt<(singleAttempt?1:2);attempt++){
   signal?.throwIfAborted();
   // Revalidate every destination, including redirects and retries.
   await safeDestination(url);
   try{
    const response=await fetch(url.href,{redirect:'manual',signal:AbortSignal.any([AbortSignal.timeout(20000),...(signal?[signal]:[])]),headers:{'user-agent':'QuoVadis Research/1.0 (+internal business research)','accept':'text/html,application/pdf,text/plain;q=0.9'}});
-   if(![429,502,503,504].includes(response.status)||attempt)return response;
+   if(singleAttempt||![429,502,503,504].includes(response.status)||attempt)return response;
    const retryAfter=response.headers.get('retry-after');
    if(retryAfter&&(!/^\d+$/.test(retryAfter)||Number(retryAfter)>2))return response;
    await response.body?.cancel();await new Promise(resolve=>setTimeout(resolve,retryAfter?Number(retryAfter)*1000:300));
   }catch(error){
    const failure=sourceFailure(error);
-   if(attempt||!['transient','timeout'].includes(failure.code))throw failure;
+   if(singleAttempt||attempt||!['transient','timeout'].includes(failure.code))throw failure;
    await new Promise(resolve=>setTimeout(resolve,300));
   }
  }
  throw new SourceReadError('network','Originalseite konnte nicht gelesen werden.');
 }
-async function localScrape(value:string,signal?:AbortSignal):Promise<VerifiedPage|null>{
+async function localScrape(value:string,signal?:AbortSignal,singleAttempt=false):Promise<VerifiedPage|null>{
  let url=publicWebUrl(value);if(!url)return null;
  for(let redirects=0;redirects<4;redirects++){
-  const response=await fetchOriginal(url,signal);
+  const response=await fetchOriginal(url,signal,singleAttempt);
   if(response.status>=300&&response.status<400){const location=response.headers.get('location');await response.body?.cancel();url=location?publicWebUrl(new URL(location,url).href):null;if(!url)return null;continue}
   if(!response.ok){await response.body?.cancel();if([404,410].includes(response.status))return null;throw new SourceReadError('http_'+response.status,'Originalseite antwortet mit HTTP '+response.status+([401,403].includes(response.status)?' (Zugriff nicht öffentlich verfügbar).':response.status===429?' (zu viele Anfragen).':'.'))}
   const type=response.headers.get('content-type')||'';if(/application\/pdf/i.test(type))return pdfPage(response,url);if(!/text\/html|text\/plain/i.test(type)){await response.body?.cancel();return null}
@@ -256,10 +256,10 @@ export async function websiteResponse(value:string,signal?:AbortSignal){
  }
  throw Error('Zu viele Weiterleitungen.');
 }
-export async function scrapePage(firecrawlKey:string,value:string,signal?:AbortSignal):Promise<VerifiedPage|null>{
+export async function scrapePage(firecrawlKey:string,value:string,signal?:AbortSignal,options:{singleAttempt?:boolean}={}):Promise<VerifiedPage|null>{
  if(firecrawlKey&&(firecrawlScrapeBackoff.get(firecrawlKey)||0)<Date.now()){
   try{const page=await firecrawlScrape(firecrawlKey,value,signal);if(page)return decoratePage(page)}catch(error){signal?.throwIfAborted();if(error instanceof FirecrawlError&&error.code!=='source'&&error.code!=='invalid_response')firecrawlScrapeBackoff.set(firecrawlKey,Date.now()+(error.retryAfterMs??120000))}
  }
- try{return await localScrape(value,signal)}catch(error){if(error instanceof TypeError||error instanceof DOMException)throw sourceFailure(error);throw error}
+ try{return await localScrape(value,signal,options.singleAttempt===true)}catch(error){if(error instanceof TypeError||error instanceof DOMException)throw sourceFailure(error);throw error}
 }
 export type {SearchHit,VerifiedPage,PageLink,PublicContact};

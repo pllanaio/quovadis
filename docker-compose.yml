@@ -21,8 +21,8 @@ services:
       SETTINGS_KEY_FILE: /app/data/settings.key
       WORKER_KEY_FILE: /app/data/worker.key
       NODE_USE_ENV_PROXY: "1"
-      NO_PROXY: searxng,app,db,browser,localhost,127.0.0.1,::1
-      no_proxy: searxng,app,db,browser,localhost,127.0.0.1,::1
+      NO_PROXY: searxng,app,db,browser,agent-reach,localhost,127.0.0.1,::1
+      no_proxy: searxng,app,db,browser,agent-reach,localhost,127.0.0.1,::1
     volumes:
       - app_data:/app/data
     depends_on:
@@ -54,13 +54,20 @@ services:
       SETTINGS_KEY_FILE: /app/data/settings.key
       WORKER_KEY_FILE: /app/data/worker.key
       NODE_USE_ENV_PROXY: "1"
-      NO_PROXY: searxng,app,db,browser,localhost,127.0.0.1,::1
-      no_proxy: searxng,app,db,browser,localhost,127.0.0.1,::1
+      NO_PROXY: searxng,app,db,browser,agent-reach,localhost,127.0.0.1,::1
+      no_proxy: searxng,app,db,browser,agent-reach,localhost,127.0.0.1,::1
     volumes:
       - app_data:/app/data
     depends_on:
       - app
     restart: unless-stopped
+  agent-reach:
+    build:
+      context: .
+      dockerfile: agent-reach-service/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - app_data:/app/data:ro
   browser:
     build:
       context: .

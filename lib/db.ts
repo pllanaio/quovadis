@@ -147,6 +147,7 @@ export async function init() {
       platform TEXT NOT NULL,profile_url TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',attempts INTEGER NOT NULL DEFAULT 0,
       error TEXT,next_attempt_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),UNIQUE(opportunity_id,profile_url)
     );
+    ALTER TABLE social_jobs ADD COLUMN IF NOT EXISTS research_mode TEXT NOT NULL DEFAULT 'browser';
     CREATE TABLE IF NOT EXISTS company_reviews (
       id BIGSERIAL PRIMARY KEY,url TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',
       opportunity_id BIGINT REFERENCES opportunities(id) ON DELETE SET NULL,
